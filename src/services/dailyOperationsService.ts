@@ -204,6 +204,14 @@ export const removeArchivedProductId = (id: string): void => {
   }
 };
 
+export const removeCustomProduct = (id: string): void => {
+  try {
+    const existing: Product[] = JSON.parse(localStorage.getItem(CUSTOM_PRODUCTS_KEY) || '[]');
+    const filtered = existing.filter((p) => p.id !== id);
+    localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(filtered));
+  } catch {}
+};
+
 /**
  * Fetch all master street menu products from database
  */
@@ -306,6 +314,7 @@ export const createProductInDB = async (product: Product): Promise<void> => {
  */
 export const archiveProductInDB = async (productId: string): Promise<void> => {
   addArchivedProductId(productId);
+  removeCustomProduct(productId);
   if (!isSupabaseConfigured()) return;
   try {
     const { error } = await supabase
@@ -381,6 +390,36 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
         }
       });
     }
+
+    // Ensure newly added custom products in active open sessions are not lost on refresh for staff
+    try {
+      const customProds: Product[] = JSON.parse(localStorage.getItem(CUSTOM_PRODUCTS_KEY) || '[]');
+      const archivedIds = new Set(getArchivedProductIds());
+      Object.values(result).forEach((dayData) => {
+        if (dayData.session && dayData.session.status === 'open' && !dayData.session.isLocked) {
+          const existingIds = new Set(dayData.items.map((i) => i.productId));
+          customProds.forEach((cp) => {
+            if (!existingIds.has(cp.id) && !archivedIds.has(cp.id) && cp.isActive !== false) {
+              dayData.items.push({
+                id: `inv-${dayData.session.sessionDate}-${cp.id}`,
+                sessionDate: dayData.session.sessionDate,
+                productId: cp.id,
+                productName: cp.name,
+                unitPrice: cp.defaultPrice,
+                morningCarriedOver: 0,
+                morningNewPrepared: 0,
+                totalAvailable: 0,
+                closingCounted: 0,
+                closingUsableLeftover: 0,
+                closingWasted: 0,
+                quantitySold: 0,
+                estimatedRevenue: 0,
+              });
+            }
+          });
+        }
+      });
+    } catch {}
 
     return result;
   } catch (err) {
@@ -588,6 +627,7 @@ export const deleteExpenseFromDB = async (expenseId: string): Promise<void> => {
 
 export const deleteInventoryItemFromDB = async (sessionDate: string, productId: string): Promise<void> => {
   addArchivedProductId(productId);
+  removeCustomProduct(productId);
   if (!isSupabaseConfigured()) return;
   try {
     const { error } = await supabase
