@@ -330,6 +330,131 @@ export const archiveProductInDB = async (productId: string): Promise<void> => {
 };
 
 /**
+ * Automatically reconciles and cascades inventory carryover stock and closing reserve cash
+ * across consecutive operating days in chronological order.
+ * Ensures that if Day 1's sales or leftover is corrected later, Day 2's morningCarriedOver
+ * matches Day 1's updated closing usable leftover without manual re-entry.
+ */
+export const cascadeInventoryCarryover = (
+  allDays: Record<string, DayData>,
+  changedDate?: string
+): { updatedDays: Record<string, DayData>; changedDays: DayData[] } => {
+  const sortedDates = Object.keys(allDays).sort();
+  const updatedDays: Record<string, DayData> = { ...allDays };
+  const changedDays: DayData[] = [];
+
+  const startIndex = changedDate ? Math.max(0, sortedDates.indexOf(changedDate)) : 0;
+
+  for (let i = startIndex; i < sortedDates.length - 1; i++) {
+    const curDate = sortedDates[i];
+    const nextDate = sortedDates[i + 1];
+
+    const curDay = updatedDays[curDate];
+    const nextDay = updatedDays[nextDate];
+
+    if (!curDay || !nextDay || !nextDay.session) continue;
+
+    let nextDayModified = false;
+
+    // 1. Map closing leftovers of curDay by productId
+    const curLeftovers: Record<string, number> = {};
+    curDay.items.forEach((item) => {
+      curLeftovers[item.productId] = item.closingUsableLeftover;
+    });
+
+    // 2. Check and update morningCarriedOver in nextDay.items
+    const nextItems = nextDay.items.map((nextItem) => {
+      if (curLeftovers[nextItem.productId] !== undefined) {
+        const expectedCarry = curLeftovers[nextItem.productId];
+        if (nextItem.morningCarriedOver !== expectedCarry) {
+          nextDayModified = true;
+          const newTotalAvail = expectedCarry + nextItem.morningNewPrepared;
+          const sold = nextItem.quantitySold;
+          const waste = nextItem.closingWasted;
+          const reusable = Math.max(0, newTotalAvail - sold - waste);
+          return {
+            ...nextItem,
+            morningCarriedOver: expectedCarry,
+            totalAvailable: newTotalAvail,
+            closingUsableLeftover: reusable,
+            closingCounted: reusable + waste,
+            estimatedRevenue: sold * nextItem.unitPrice,
+          };
+        }
+      }
+      return nextItem;
+    });
+
+    // Check if curDay has items that nextDay doesn't have at all
+    const nextProductIds = new Set(nextItems.map((i) => i.productId));
+    curDay.items.forEach((curItem) => {
+      if (!nextProductIds.has(curItem.productId) && curItem.closingUsableLeftover > 0) {
+        nextDayModified = true;
+        nextItems.push({
+          id: `inv-${nextDate}-${curItem.productId}`,
+          sessionDate: nextDate,
+          productId: curItem.productId,
+          productName: curItem.productName,
+          unitPrice: curItem.unitPrice,
+          morningCarriedOver: curItem.closingUsableLeftover,
+          morningNewPrepared: 0,
+          totalAvailable: curItem.closingUsableLeftover,
+          closingCounted: curItem.closingUsableLeftover,
+          closingUsableLeftover: curItem.closingUsableLeftover,
+          closingWasted: 0,
+          quantitySold: 0,
+          estimatedRevenue: 0,
+        });
+      }
+    });
+
+    // 3. Check and update openingSavedCash from curDay's closingSavedCash
+    let nextSession = nextDay.session;
+    const expectedOpeningReserve = curDay.session.closingSavedCash;
+    if (expectedOpeningReserve > 0 && nextSession.openingSavedCash !== expectedOpeningReserve && curDay.session.status === 'closed') {
+      nextDayModified = true;
+      const khuchra = nextSession.khuchraTakenFromReserve || nextSession.openingCash;
+      const netCashGenerated = nextSession.actualCashCounted - khuchra;
+      nextSession = {
+        ...nextSession,
+        openingSavedCash: expectedOpeningReserve,
+        closingSavedCash: expectedOpeningReserve + netCashGenerated,
+      };
+    }
+
+    if (nextDayModified) {
+      const grossRevenue = nextItems.reduce((sum, item) => sum + item.estimatedRevenue, 0);
+      const netRevenue = Math.max(0, grossRevenue - nextSession.estimatedDiscounts);
+      const totalExp = nextDay.expenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalPay = nextDay.payouts.reduce((sum, p) => sum + p.amount, 0);
+      const expectedCash = nextSession.openingCash + netRevenue - totalExp - totalPay;
+
+      const finalNextSession: DailySession = {
+        ...nextSession,
+        totalProductsPrepared: nextItems.reduce((sum, item) => sum + item.totalAvailable, 0),
+        totalProductsSold: nextItems.reduce((sum, item) => sum + item.quantitySold, 0),
+        totalProductsWasted: nextItems.reduce((sum, item) => sum + item.closingWasted, 0),
+        grossEstimatedRevenue: grossRevenue,
+        netEstimatedRevenue: netRevenue,
+        expectedClosingCash: expectedCash,
+        cashDifference: nextSession.actualCashCounted - expectedCash,
+      };
+
+      const updatedNextDay: DayData = {
+        ...nextDay,
+        items: nextItems,
+        session: finalNextSession,
+      };
+
+      updatedDays[nextDate] = updatedNextDay;
+      changedDays.push(updatedNextDay);
+    }
+  }
+
+  return { updatedDays, changedDays };
+};
+
+/**
  * Fetch all operating days, inventory items, expenses, and payouts
  */
 export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
@@ -421,7 +546,8 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
       });
     } catch {}
 
-    return result;
+    const { updatedDays } = cascadeInventoryCarryover(result);
+    return updatedDays;
   } catch (err) {
     console.error('Failed to fetch days data from Supabase:', err);
     return {};

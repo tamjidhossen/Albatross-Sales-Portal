@@ -40,7 +40,8 @@ import {
   persistPayout, 
   deletePayoutFromDB, 
   updateSessionLock, 
-  insertAuditLog 
+  insertAuditLog,
+  cascadeInventoryCarryover 
 } from '../../services/dailyOperationsService';
 import { useAuth, AuthProvider } from '../../contexts/AuthContext';
 import { 
@@ -128,7 +129,14 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         ]);
         if (isMounted) {
           if (daysData && Object.keys(daysData).length > 0) {
-            setAllDays((prev) => ({ ...prev, ...daysData }));
+            const { updatedDays, changedDays } = cascadeInventoryCarryover(daysData);
+            setAllDays((prev) => ({ ...prev, ...updatedDays }));
+            if (changedDays.length > 0) {
+              changedDays.forEach((cd) => {
+                persistSession(cd.session);
+                persistInventoryItems(cd.items);
+              });
+            }
           }
           if (logs && logs.length > 0) {
             setAuditLogs(logs);
@@ -289,10 +297,22 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     const prods = await fetchProducts();
     const started = await startShiftSession(selectedDate, openingCash, prods);
     const newDay = started || createDefaultSessionForDate(selectedDate, 0, openingCash, prods);
-    setAllDays((prev) => ({
-      ...prev,
-      [selectedDate]: newDay,
-    }));
+    
+    setAllDays((prev) => {
+      const nextMap = {
+        ...prev,
+        [selectedDate]: newDay,
+      };
+      const { updatedDays, changedDays } = cascadeInventoryCarryover(nextMap, selectedDate);
+      if (changedDays.length > 0) {
+        changedDays.forEach((cd) => {
+          persistSession(cd.session);
+          persistInventoryItems(cd.items);
+        });
+      }
+      return updatedDays;
+    });
+
     logAudit('session', selectedDate, 'INSERT', 'status', null, 'open', `Started shift for ${selectedDate} with ৳${openingCash} opening cash`);
   };
 
@@ -306,9 +326,13 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   ) => {
     lastLocalEditTimeRef.current = Date.now();
     let sessionSnapshot: DailySession | null = null;
-    const inventorySnapshot = nextInventory;
+    let inventorySnapshot = nextInventory;
+    let cascadedChangedDays: DayData[] = [];
 
-    updateCurrentDay((cur) => {
+    setAllDays((prevAll) => {
+      const cur = prevAll[selectedDate];
+      if (!cur) return prevAll;
+
       const totalPrepared = nextInventory.reduce((sum, i) => sum + i.totalAvailable, 0);
       const totalSold = nextInventory.reduce((sum, i) => sum + i.quantitySold, 0);
       const totalWasted = nextInventory.reduce((sum, i) => sum + i.closingWasted, 0);
@@ -336,13 +360,24 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
       sessionSnapshot = updatedSession;
 
-      return {
+      const updatedCurDay: DayData = {
         ...cur,
         items: nextInventory,
         expenses: nextExpenses,
         payouts: nextPayouts,
         session: updatedSession,
       };
+
+      const initialMap = {
+        ...prevAll,
+        [selectedDate]: updatedCurDay,
+      };
+
+      // Cascade closing leftovers and reserve cash forward to subsequent days immediately!
+      const { updatedDays, changedDays } = cascadeInventoryCarryover(initialMap, selectedDate);
+      cascadedChangedDays = changedDays;
+
+      return updatedDays;
     });
 
     // Debounce Supabase writes by 600ms so rapid keystrokes never trigger feedback loops or DB flooding
@@ -354,6 +389,14 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         persistSession(sessionSnapshot);
       }
       persistInventoryItems(inventorySnapshot);
+
+      // Also persist any subsequent days that were updated by the carryover cascade!
+      if (cascadedChangedDays.length > 0) {
+        cascadedChangedDays.forEach((cd) => {
+          persistSession(cd.session);
+          persistInventoryItems(cd.items);
+        });
+      }
     }, 600);
   };
 
@@ -551,7 +594,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const handleSaveDrawerCash = (countedDrawerCash: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     lastLocalEditTimeRef.current = Date.now();
-    updateCurrentDay((cur) => {
+    setAllDays((prevAll) => {
+      const cur = prevAll[selectedDate];
+      if (!cur) return prevAll;
       const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
       const netCashGenerated = countedDrawerCash - khuchra;
       const nextReserve = cur.session.openingSavedCash + netCashGenerated;
@@ -564,10 +609,20 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         transferredToReserve: countedDrawerCash,
       };
       persistSession(updatedSession);
-      return {
-        ...cur,
-        session: updatedSession,
+
+      const initialMap = {
+        ...prevAll,
+        [selectedDate]: { ...cur, session: updatedSession },
       };
+
+      const { updatedDays, changedDays } = cascadeInventoryCarryover(initialMap, selectedDate);
+      if (changedDays.length > 0) {
+        changedDays.forEach((cd) => {
+          persistSession(cd.session);
+          persistInventoryItems(cd.items);
+        });
+      }
+      return updatedDays;
     });
     logAudit('session', selectedDate, 'UPDATE', 'closingDrawerCash', activeDay.session.actualCashCounted, countedDrawerCash, `Saved closing drawer cash: ৳${countedDrawerCash}`);
   };
