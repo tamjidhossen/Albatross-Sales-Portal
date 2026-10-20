@@ -1,4 +1,4 @@
-name: Supabase Free Automated Daily Backup
+name: Supabase Daily Automated Backup
 
 on:
   schedule:
@@ -21,45 +21,49 @@ jobs:
 
       - name: Export Supabase Tables via REST API
         env:
-          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://sximqzpcrwodvcgkpevb.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_nVUTv5-6-XQg58T5aTHDWQ_hBgLxlXR' }}
         run: |
-          echo "Exporting sales data..."
-          curl -s -X GET "${SUPABASE_URL}/rest/v1/sales?select=*" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/sales.json
+          echo "Exporting daily sessions..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/daily_sessions?select=*" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/daily_sessions.json
 
-          echo "Exporting inventory records..."
-          curl -s -X GET "${SUPABASE_URL}/rest/v1/inventory?select=*" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/inventory.json
+          echo "Exporting daily inventory..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/daily_inventory?select=*" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/daily_inventory.json
 
-          echo "Exporting bazaar expenses..."
-          curl -s -X GET "${SUPABASE_URL}/rest/v1/bazaar_expenses?select=*" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/bazaar_expenses.json
+          echo "Exporting daily expenses..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/daily_expenses?select=*" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/daily_expenses.json
 
-          echo "Exporting audit history trail..."
+          echo "Exporting daily payouts..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/daily_payouts?select=*" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/daily_payouts.json
+
+          echo "Exporting products..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/products?select=*" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/products.json
+
+          echo "Exporting audit trail..."
           curl -s -X GET "${SUPABASE_URL}/rest/v1/audit_logs?select=*" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/audit_logs.json
-
-          echo "Exporting categories..."
-          curl -s -X GET "${SUPABASE_URL}/rest/v1/dynamic_categories?select=*" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/dynamic_categories.json
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" > $BACKUP_DIR/audit_logs.json
 
           echo "Backup files generated:"
           ls -lh $BACKUP_DIR
 
       - name: Commit and Push to Private Backup Branch
         run: |
-          git config --global user.name "Albatross DB Backup Bot"
-          git config --global user.email "backup-bot@albatrossflavor.com"
+          git config --global user.name "Albatross Backup Bot"
+          git config --global user.email "backup-bot@albatross.com"
           
-          # Stash or commit snapshot to backups branch
+          # Switch or create dedicated backups branch
           git checkout -b backups 2>/dev/null || git checkout backups
           git add backups/
           git commit -m "Automated DB Backup - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push origin backups || echo "Push skipped if remote branch not yet configured"
-
