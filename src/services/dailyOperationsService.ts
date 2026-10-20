@@ -439,6 +439,19 @@ export const deleteExpenseFromDB = async (expenseId: string): Promise<void> => {
   }
 };
 
+export const deleteInventoryItemFromDB = async (sessionDate: string, productId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await supabase
+      .from('daily_inventory')
+      .delete()
+      .eq('session_date', sessionDate)
+      .eq('product_id', productId);
+  } catch (err) {
+    console.error('Failed to delete inventory item:', err);
+  }
+};
+
 /**
  * Persist payout addition/deletion
  */

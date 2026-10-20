@@ -33,6 +33,7 @@ import {
   persistInventoryItems, 
   persistExpense, 
   deleteExpenseFromDB, 
+  deleteInventoryItemFromDB,
   persistPayout, 
   deletePayoutFromDB, 
   updateSessionLock, 
@@ -265,6 +266,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     const next = [...inventoryItems, newItem];
     recalculateSession(next, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
     logAudit('product', newId, 'INSERT', 'name', null, name, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Added product ${name} @ ৳${price}`);
+  };
+
+  // Delete Product from Daily Inventory
+  const handleDeleteMorningItem = (productId: string) => {
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    const target = inventoryItems.find((item) => item.productId === productId);
+    if (!target) return;
+    deleteInventoryItemFromDB(selectedDate, productId);
+    const updated = inventoryItems.filter((item) => item.productId !== productId);
+    recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('inventory', productId, 'DELETE', 'productId', productId, null, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Removed product ${target.productName} from day session`);
   };
 
   // Night Stock Count Handler (Simplified: Sold & Waste)
@@ -537,6 +549,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             items={inventoryItems}
             onUpdateItem={handleUpdateMorningItem}
             onAddProduct={handleAddProduct}
+            onDeleteItem={handleDeleteMorningItem}
             onBack={() => setActiveTab('overview')}
             isLocked={session.isLocked && !isSuperAdmin}
           />

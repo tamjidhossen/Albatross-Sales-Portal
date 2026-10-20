@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { DailyInventoryItem } from '../../types';
-import { Plus, Minus, Sun, Check, ArrowLeft, PlusCircle, X } from 'lucide-react';
+import { Plus, Minus, Sun, Check, ArrowLeft, PlusCircle, X, Trash2 } from 'lucide-react';
 
 interface MorningStockSectionProps {
   items: DailyInventoryItem[];
   onUpdateItem: (productId: string, morningNewPrepared: number) => void;
   onAddProduct: (name: string, price: number, prepared: number) => void;
+  onDeleteItem: (productId: string) => void;
   onBack: () => void;
   isLocked: boolean;
 }
@@ -14,11 +15,13 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
   items,
   onUpdateItem,
   onAddProduct,
+  onDeleteItem,
   onBack,
   isLocked,
 }) => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdPrice, setNewProdPrice] = useState('');
   const [newProdPrepared, setNewProdPrepared] = useState('20');
@@ -200,11 +203,47 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                 <span className="text-[10px] text-zinc-500">৳{item.unitPrice} each</span>
               </div>
 
-              {item.morningCarriedOver > 0 && (
-                <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
-                  +{item.morningCarriedOver} leftover
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {item.morningCarriedOver > 0 && (
+                  <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                    +{item.morningCarriedOver} leftover
+                  </span>
+                )}
+
+                {!isLocked && (
+                  confirmDeleteId === item.productId ? (
+                    <div className="flex items-center gap-1 bg-red-50 border border-red-200 p-0.5 rounded-lg">
+                      <span className="text-[9px] text-red-700 font-bold px-1">Delete?</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteItem(item.productId);
+                          setConfirmDeleteId(null);
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white px-1.5 py-0.5 rounded text-[9px] font-bold"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="bg-zinc-200 hover:bg-zinc-300 text-zinc-700 px-1 py-0.5 rounded text-[9px]"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(item.productId)}
+                      className="p-1 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 transition"
+                      title="Delete item from day"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )
+                )}
+              </div>
             </div>
 
             {/* Stepper & Counter */}
