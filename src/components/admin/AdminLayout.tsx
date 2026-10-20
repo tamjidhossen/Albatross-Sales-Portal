@@ -39,7 +39,6 @@ import {
 } from '../../services/dailyOperationsService';
 import { useAuth, AuthProvider } from '../../contexts/AuthContext';
 import { 
-  ArrowLeft, 
   Shield, 
   LogOut, 
   LayoutGrid, 
@@ -53,7 +52,7 @@ import {
 } from 'lucide-react';
 
 interface AdminLayoutProps {
-  onBackToLanding: () => void;
+  onBackToLanding?: () => void;
 }
 
 const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
@@ -62,6 +61,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>('overview');
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   
   // Multi-day sessions dictionary and date selection
   const [allDays, setAllDays] = useState<Record<string, DayData>>(HISTORICAL_DAYS);
@@ -413,16 +413,8 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       {/* Top Header (Clean, Minimal, White) */}
       <header className="sticky top-0 z-30 bg-white/95 border-b border-zinc-200 backdrop-blur-md px-4 py-2.5 flex items-center justify-between">
         
-        {/* Left: Back & Cart Mark */}
+        {/* Left: Cart Mark & Title */}
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={onBackToLanding}
-            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-600 transition active:scale-95"
-            title="Back to Landing Page"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
           <div className="w-7 h-7 rounded-full bg-zinc-900 overflow-hidden shrink-0 border border-zinc-300">
             <img src="/assets/images/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
           </div>
@@ -464,7 +456,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
           {/* Logout button */}
           <button
-            onClick={() => signOut()}
+            onClick={() => setIsLogoutModalOpen(true)}
             className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-zinc-500 hover:text-red-600 transition"
             title="Sign Out"
           >
@@ -682,6 +674,48 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
           onClose={() => setIsStaffModalOpen(false)}
           currentUserEmail={user.email || ''}
         />
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-xs bg-white rounded-2xl p-5 border border-zinc-200 shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                <LogOut className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-900 leading-tight">
+                  Sign Out?
+                </h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Are you sure you want to log out of the admin portal?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition active:scale-98"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsLogoutModalOpen(false);
+                  await signOut();
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5 text-white" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

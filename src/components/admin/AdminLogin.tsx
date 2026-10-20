@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Lock, Mail, ShieldAlert, ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ShieldAlert, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 interface AdminLoginProps {
-  onBackToLanding: () => void;
+  onBackToLanding?: () => void;
 }
 
-export const AdminLogin: React.FC<AdminLoginProps> = ({ onBackToLanding }) => {
+export const AdminLogin: React.FC<AdminLoginProps> = () => {
   const { signInWithPassword, isConfigured } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,17 +34,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBackToLanding }) => {
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col justify-center items-center px-4 py-8 text-zinc-900 font-sans">
       
-      {/* Top Bar Navigation */}
-      <div className="fixed top-4 left-4 z-20">
-        <button
-          onClick={onBackToLanding}
-          className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs active:scale-95"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Cart</span>
-        </button>
-      </div>
-
       {/* Main Login Card (Pure & Simple) */}
       <div className="w-full max-w-sm bg-white rounded-2xl p-6 sm:p-7 shadow-sm border border-zinc-200">
         
