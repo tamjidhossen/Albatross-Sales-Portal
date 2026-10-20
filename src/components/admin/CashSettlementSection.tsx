@@ -67,10 +67,10 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
   // Khuchra cash state
   const khuchraVal = session.khuchraTakenFromReserve || session.openingCash || 0;
-  const [khuchraInput, setKhuchraInput] = useState(khuchraVal.toString());
+  const [khuchraInput, setKhuchraInput] = useState(khuchraVal === 0 ? '' : khuchraVal.toString());
 
   // Closing drawer cash state
-  const [closingDrawerInput, setClosingDrawerInput] = useState(session.actualCashCounted.toString());
+  const [closingDrawerInput, setClosingDrawerInput] = useState(session.actualCashCounted === 0 ? '' : session.actualCashCounted.toString());
   const [isSavedDrawer, setIsSavedDrawer] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
@@ -180,9 +180,9 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               min="0"
               disabled={!isEditable}
               value={khuchraInput}
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => setKhuchraInput(e.target.value.replace(/^0+(?=\d)/, ''))}
+              onChange={(e) => setKhuchraInput(e.target.value)}
               onBlur={handleKhuchraBlur}
+              placeholder="0"
               className="w-20 h-7 rounded-lg border border-zinc-300 bg-zinc-50 text-center font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </div>
@@ -265,8 +265,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                   required
                   min="1"
                   value={payoutAmount}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPayoutAmount(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onChange={(e) => setPayoutAmount(e.target.value)}
                   placeholder="500"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -394,9 +393,8 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               min="0"
               disabled={!isEditable}
               value={closingDrawerInput}
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => setClosingDrawerInput(e.target.value.replace(/^0+(?=\d)/, ''))}
-              placeholder="e.g. 7950"
+              onChange={(e) => setClosingDrawerInput(e.target.value)}
+              placeholder="0"
               className="w-full h-9 rounded-lg bg-white border border-zinc-300 text-center font-extrabold text-base text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </div>

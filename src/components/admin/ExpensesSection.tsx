@@ -176,8 +176,7 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
                   required
                   min="1"
                   value={amount}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setAmount(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onChange={(e) => setAmount(e.target.value)}
                   placeholder="e.g. 450"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 shadow-2xs transition"
                 />

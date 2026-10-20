@@ -120,11 +120,11 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                     min="0"
                     max={item.totalAvailable}
                     disabled={isLocked}
-                    value={item.quantitySold}
-                    onFocus={(e) => e.target.select()}
+                    value={item.quantitySold === 0 ? '' : item.quantitySold}
+                    placeholder="0"
                     onChange={(e) => {
-                      const clean = e.target.value.replace(/^0+(?=\d)/, '');
-                      const soldVal = Math.max(0, parseInt(clean, 10) || 0);
+                      const val = e.target.value;
+                      const soldVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
                       onUpdateNightCount(item.productId, soldVal, item.closingWasted);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -141,11 +141,11 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                     min="0"
                     max={item.totalAvailable}
                     disabled={isLocked}
-                    value={item.closingWasted}
-                    onFocus={(e) => e.target.select()}
+                    value={item.closingWasted === 0 ? '' : item.closingWasted}
+                    placeholder="0"
                     onChange={(e) => {
-                      const clean = e.target.value.replace(/^0+(?=\d)/, '');
-                      const wasteVal = Math.max(0, parseInt(clean, 10) || 0);
+                      const val = e.target.value;
+                      const wasteVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
                       onUpdateNightCount(item.productId, item.quantitySold, wasteVal);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
@@ -184,13 +184,13 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
             type="number"
             min="0"
             disabled={isLocked}
-            value={estimatedDiscounts}
-            onFocus={(e) => e.target.select()}
-            onChange={(e) => {
-              const clean = e.target.value.replace(/^0+(?=\d)/, '');
-              onUpdateDiscounts(Math.max(0, parseInt(clean, 10) || 0));
-            }}
+            value={estimatedDiscounts === 0 ? '' : estimatedDiscounts}
             placeholder="0"
+            onChange={(e) => {
+              const val = e.target.value;
+              const discountsVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
+              onUpdateDiscounts(discountsVal);
+            }}
             className="w-16 h-7 rounded-lg border border-zinc-300 bg-white text-center font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
         </div>

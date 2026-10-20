@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   DailySession, 
   DailyInventoryItem, 
@@ -89,6 +89,19 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [staffProfiles, setStaffProfiles] = useState<any[]>([]);
 
+  // Refs to avoid realtime race conditions and debounce network writes
+  const lastLocalEditTimeRef = useRef<number>(0);
+  const saveTimeoutRef = useRef<any>(null);
+
+  // Clean up debounced save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Sync active tab to sessionStorage
   useEffect(() => {
     try {
@@ -130,43 +143,44 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     };
     loadSupabaseData();
 
+    // Guarded handler: Do NOT reload if user recently edited locally or is actively typing in an input
+    const handleRealtimeRemoteUpdate = () => {
+      if (Date.now() - lastLocalEditTimeRef.current < 4000) {
+        return;
+      }
+      if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        return;
+      }
+      loadSupabaseData();
+    };
+
     // Subscribe to Supabase Realtime for instant multi-device live updates
     const channel = supabase
       .channel('daily_ops_realtime_sync')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_sessions' },
-        () => {
-          loadSupabaseData();
-        }
+        handleRealtimeRemoteUpdate
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_inventory' },
-        () => {
-          loadSupabaseData();
-        }
+        handleRealtimeRemoteUpdate
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_expenses' },
-        () => {
-          loadSupabaseData();
-        }
+        handleRealtimeRemoteUpdate
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_payouts' },
-        () => {
-          loadSupabaseData();
-        }
+        handleRealtimeRemoteUpdate
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'products' },
-        () => {
-          loadSupabaseData();
-        }
+        handleRealtimeRemoteUpdate
       )
       .subscribe();
 
@@ -282,7 +296,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     logAudit('session', selectedDate, 'INSERT', 'status', null, 'open', `Started shift for ${selectedDate} with ৳${openingCash} opening cash`);
   };
 
-  // Recalculate Session Totals Helper
+  // Recalculate Session Totals Helper (Instant local state update + Debounced Supabase sync)
   const recalculateSession = (
     nextInventory: DailyInventoryItem[],
     nextExpenses: DailyExpense[],
@@ -290,6 +304,10 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     discounts: number,
     actualCash: number
   ) => {
+    lastLocalEditTimeRef.current = Date.now();
+    let sessionSnapshot: DailySession | null = null;
+    const inventorySnapshot = nextInventory;
+
     updateCurrentDay((cur) => {
       const totalPrepared = nextInventory.reduce((sum, i) => sum + i.totalAvailable, 0);
       const totalSold = nextInventory.reduce((sum, i) => sum + i.quantitySold, 0);
@@ -301,31 +319,42 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const expected = cur.session.openingCash + netRevenue - totalExp - totalPay;
       const diff = actualCash - expected;
 
-      const updatedDay: DayData = {
+      const updatedSession: DailySession = {
+        ...cur.session,
+        totalProductsPrepared: totalPrepared,
+        totalProductsSold: totalSold,
+        totalProductsWasted: totalWasted,
+        grossEstimatedRevenue: grossRevenue,
+        estimatedDiscounts: discounts,
+        netEstimatedRevenue: netRevenue,
+        totalExpenses: totalExp,
+        totalPayouts: totalPay,
+        expectedClosingCash: expected,
+        actualCashCounted: actualCash,
+        cashDifference: diff,
+      };
+
+      sessionSnapshot = updatedSession;
+
+      return {
         ...cur,
         items: nextInventory,
         expenses: nextExpenses,
         payouts: nextPayouts,
-        session: {
-          ...cur.session,
-          totalProductsPrepared: totalPrepared,
-          totalProductsSold: totalSold,
-          totalProductsWasted: totalWasted,
-          grossEstimatedRevenue: grossRevenue,
-          estimatedDiscounts: discounts,
-          netEstimatedRevenue: netRevenue,
-          totalExpenses: totalExp,
-          totalPayouts: totalPay,
-          expectedClosingCash: expected,
-          actualCashCounted: actualCash,
-          cashDifference: diff,
-        },
+        session: updatedSession,
       };
-
-      persistSession(updatedDay.session);
-      persistInventoryItems(nextInventory);
-      return updatedDay;
     });
+
+    // Debounce Supabase writes by 600ms so rapid keystrokes never trigger feedback loops or DB flooding
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      if (sessionSnapshot) {
+        persistSession(sessionSnapshot);
+      }
+      persistInventoryItems(inventorySnapshot);
+    }, 600);
   };
 
   // Morning Stock Update Handler
@@ -499,6 +528,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Khuchra Cash Handler
   const handleUpdateKhuchra = (khuchra: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    lastLocalEditTimeRef.current = Date.now();
     updateCurrentDay((cur) => {
       const exp = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
       const updatedSession: DailySession = {
@@ -520,6 +550,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Save Drawer Cash to Reserve Handler
   const handleSaveDrawerCash = (countedDrawerCash: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    lastLocalEditTimeRef.current = Date.now();
     updateCurrentDay((cur) => {
       const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
       const netCashGenerated = countedDrawerCash - khuchra;

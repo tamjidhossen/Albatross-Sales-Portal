@@ -128,8 +128,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                   required
                   min="1"
                   value={newProdPrice}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setNewProdPrice(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onChange={(e) => setNewProdPrice(e.target.value)}
                   placeholder="120"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -141,8 +140,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                   type="number"
                   min="0"
                   value={newProdPrepared}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setNewProdPrepared(e.target.value.replace(/^0+(?=\d)/, ''))}
+                  onChange={(e) => setNewProdPrepared(e.target.value)}
                   placeholder="20"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -279,10 +277,11 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
 
                 <input
                   type="number"
+                  min="0"
                   disabled={isLocked}
-                  value={item.morningNewPrepared}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => handleDirectInput(item.productId, e.target.value.replace(/^0+(?=\d)/, ''))}
+                  value={item.morningNewPrepared === 0 ? '' : item.morningNewPrepared}
+                  placeholder="0"
+                  onChange={(e) => handleDirectInput(item.productId, e.target.value)}
                   className="w-12 h-7 rounded-md border border-zinc-300 bg-white text-center font-bold text-sm text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
 
