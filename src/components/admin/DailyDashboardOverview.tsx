@@ -21,6 +21,7 @@ import {
 import { downloadAnalyticsReportImage } from '../../utils/generateAnalyticsImage';
 import { LockConfirmationModal } from './LockConfirmationModal';
 import { getTodayDateString } from '../../services/dailyOperationsService';
+import { calculateAggregatedAnalytics } from '../../utils/analyticsCalculations';
 
 interface DailyDashboardOverviewProps {
   session: DailySession | null;
@@ -109,13 +110,13 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
       calcEndDate = selectedDate;
     } else if (analyticsPreset === '7days') {
       const parts = selectedDate.split('-');
-      const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
       d.setDate(d.getDate() - 6);
       calcStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       calcEndDate = selectedDate;
     } else if (analyticsPreset === '30days') {
       const parts = selectedDate.split('-');
-      const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
       d.setDate(d.getDate() - 29);
       calcStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       calcEndDate = selectedDate;
@@ -124,160 +125,16 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
       calcEndDate = endDate;
     }
 
-    const d1 = new Date(calcStartDate).getTime();
-    const d2 = new Date(calcEndDate).getTime();
-    const days = Math.max(1, Math.round(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24)) + 1);
-
-    // Aggregate sessions in range from allSessionsData
-    const rangeSessions: DayData[] = [];
-    Object.keys(allSessionsData).forEach((dateKey) => {
-      if (dateKey >= calcStartDate && dateKey <= calcEndDate) {
-        rangeSessions.push(allSessionsData[dateKey]);
-      }
-    });
-
-    let grossSales = 0;
-    let discounts = 0;
-    let netSales = 0;
-    let totalExp = 0;
-    let totalPay = 0;
-    let totalPrepared = 0;
-    let totalSold = 0;
-    let totalWaste = 0;
-    let totalStockValue = 0;
-
-    const productMap: Record<string, { name: string; unitPrice: number; sold: number; wasted: number; revenue: number }> = {};
-    const expenseCategoryMap: Record<string, number> = {};
-    const payoutMap: Record<string, { recipientName: string; payoutType: string; amount: number }> = {};
-
-    if (rangeSessions.length > 0) {
-      rangeSessions.forEach((day) => {
-        // Derive gross sales directly from items so breakdown and gross sales ALWAYS match 100%
-        const dayGross = day.items.reduce((sum, item) => sum + item.estimatedRevenue, 0);
-        const dayDiscounts = day.session.estimatedDiscounts || 0;
-        const dayExp = day.expenses.reduce((sum, e) => sum + e.amount, 0);
-        const dayPay = day.payouts.reduce((sum, p) => sum + p.amount, 0);
-
-        grossSales += dayGross;
-        discounts += dayDiscounts;
-        netSales += Math.max(0, dayGross - dayDiscounts);
-        totalExp += dayExp;
-        totalPay += dayPay;
-        totalPrepared += day.items.reduce((sum, item) => sum + item.totalAvailable, 0);
-        totalSold += day.items.reduce((sum, item) => sum + item.quantitySold, 0);
-        totalWaste += day.items.reduce((sum, item) => sum + item.closingWasted, 0);
-        totalStockValue += day.items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
-
-        // Products
-        day.items.forEach((item) => {
-          if (!productMap[item.productId]) {
-            productMap[item.productId] = { name: item.productName, unitPrice: item.unitPrice, sold: 0, wasted: 0, revenue: 0 };
-          }
-          productMap[item.productId].sold += item.quantitySold;
-          productMap[item.productId].wasted += item.closingWasted;
-          productMap[item.productId].revenue += item.estimatedRevenue;
-        });
-
-        // Expenses
-        day.expenses.forEach((exp) => {
-          expenseCategoryMap[exp.category] = (expenseCategoryMap[exp.category] || 0) + exp.amount;
-        });
-
-        // Payouts
-        day.payouts.forEach((p) => {
-          const key = `${p.recipientName}-${p.payoutType}`;
-          if (!payoutMap[key]) {
-            payoutMap[key] = { recipientName: p.recipientName, payoutType: p.payoutType, amount: 0 };
-          }
-          payoutMap[key].amount += p.amount;
-        });
-      });
-    } else if (session && selectedDate >= calcStartDate && selectedDate <= calcEndDate) {
-      // Single active session in range (pure actual counts, no artificial multipliers)
-      grossSales = items.reduce((sum, item) => sum + item.estimatedRevenue, 0);
-      discounts = session.estimatedDiscounts || 0;
-      netSales = Math.max(0, grossSales - discounts);
-      totalExp = expenses.reduce((sum, e) => sum + e.amount, 0);
-      totalPay = payouts.reduce((sum, p) => sum + p.amount, 0);
-      totalPrepared = items.reduce((sum, item) => sum + item.totalAvailable, 0);
-      totalSold = items.reduce((sum, item) => sum + item.quantitySold, 0);
-      totalWaste = items.reduce((sum, item) => sum + item.closingWasted, 0);
-      totalStockValue = items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
-
-      items.forEach((item) => {
-        productMap[item.productId] = {
-          name: item.productName,
-          unitPrice: item.unitPrice,
-          sold: item.quantitySold,
-          wasted: item.closingWasted,
-          revenue: item.estimatedRevenue,
-        };
-      });
-
-      expenses.forEach((exp) => {
-        expenseCategoryMap[exp.category] = (expenseCategoryMap[exp.category] || 0) + exp.amount;
-      });
-
-      payouts.forEach((p) => {
-        const key = `${p.recipientName}-${p.payoutType}`;
-        payoutMap[key] = {
-          recipientName: p.recipientName,
-          payoutType: p.payoutType,
-          amount: p.amount,
-        };
-      });
-    }
-
-    const netProfit = netSales - totalExp - totalPay;
-    const profitMargin = netSales > 0 ? Math.round((netProfit / netSales) * 1000) / 10 : 0;
-    const avgDailySales = Math.round(netSales / days);
-    const avgDailyProfit = Math.round(netProfit / days);
-
-    // Products list
-    const products = Object.values(productMap).sort((a, b) => b.revenue - a.revenue);
-
-    // Expense categories list
-    const totalExpSum = Object.values(expenseCategoryMap).reduce((s, v) => s + v, 0) || 1;
-    const expenseCategories = Object.entries(expenseCategoryMap)
-      .map(([category, amount]) => ({
-        category,
-        amount,
-        percentShare: Math.round((amount / totalExpSum) * 1000) / 10,
-      }))
-      .sort((a, b) => b.amount - a.amount);
-
-    // Payouts list
-    const aggregatedPayouts = Object.values(payoutMap).sort((a, b) => b.amount - a.amount);
-
-    // Closing cash reserve for the latest day in range
-    let closingReserve = session?.closingSavedCash || 21000;
-    if (rangeSessions.length > 0) {
-      const sortedRange = [...rangeSessions].sort((a, b) => a.session.sessionDate.localeCompare(b.session.sessionDate));
-      closingReserve = sortedRange[sortedRange.length - 1].session.closingSavedCash || 0;
-    }
-
-    return {
+    return calculateAggregatedAnalytics({
       calcStartDate,
       calcEndDate,
-      days,
-      grossSales,
-      discounts,
-      netSales,
-      totalExp,
-      totalPay,
-      netProfit,
-      profitMargin,
-      avgDailySales,
-      avgDailyProfit,
-      totalPrepared,
-      totalSold,
-      totalWaste,
-      totalStockValue,
-      closingReserve,
-      products,
-      expenseCategories,
-      payouts: aggregatedPayouts,
-    };
+      allSessionsData,
+      fallbackSession: session,
+      fallbackItems: items,
+      fallbackExpenses: expenses,
+      fallbackPayouts: payouts,
+      selectedDate,
+    });
   }, [selectedDate, analyticsPreset, startDate, endDate, allSessionsData, session, items, expenses, payouts]);
 
   // Download Comprehensive Date-Range Analytics Report Image
