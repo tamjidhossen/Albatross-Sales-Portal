@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DailyExpense, ExpenseCategory } from '../../types';
 import { EXPENSE_CATEGORIES } from '../../data/mockDailyData';
 import { Receipt, ArrowLeft, Plus, Trash2, X, ChevronDown } from 'lucide-react';
@@ -9,6 +9,7 @@ interface ExpensesSectionProps {
   onDeleteExpense: (id: string) => void;
   onBack: () => void;
   isLocked: boolean;
+  staffNames?: string[];
 }
 
 export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
@@ -17,12 +18,26 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   onDeleteExpense,
   onBack,
   isLocked,
+  staffNames = [],
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [category, setCategory] = useState<ExpenseCategory>('Chicken');
   const [itemName, setItemName] = useState('');
   const [amount, setAmount] = useState('');
-  const [paidByName, setPaidByName] = useState('Tamjid');
+  
+  const availablePayers = useMemo(() => {
+    const list = ['Cart Drawer Cash'];
+    if (staffNames && staffNames.length > 0) {
+      staffNames.forEach((n) => list.push(n));
+    } else {
+      list.push('Tamjid');
+    }
+    list.push('Other Person');
+    return list;
+  }, [staffNames]);
+
+  const [paidByName, setPaidByName] = useState(availablePayers[0] || 'Cart Drawer Cash');
+  const [customPayer, setCustomPayer] = useState('');
   const [notes, setNotes] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -33,17 +48,20 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
     const parsedAmount = parseFloat(amount);
     if (!itemName.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
 
+    const finalPayer = paidByName === 'Other Person' ? (customPayer.trim() || 'Other Person') : paidByName;
+
     onAddExpense({
       sessionDate: expenses[0]?.sessionDate || new Date().toISOString().slice(0, 10),
       category,
       itemName: itemName.trim(),
       amount: parsedAmount,
-      paidByName,
+      paidByName: finalPayer,
       notes: notes || undefined,
     });
 
     setItemName('');
     setAmount('');
+    setCustomPayer('');
     setNotes('');
     setIsAdding(false);
   };
@@ -174,15 +192,32 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
                     onChange={(e) => setPaidByName(e.target.value)}
                     className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 pr-8 text-xs font-semibold text-zinc-800 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 appearance-none shadow-2xs cursor-pointer transition"
                   >
-                    <option value="Tamjid">Tamjid (Owner)</option>
-                    <option value="Rabiul">Rabiul (Chef)</option>
-                    <option value="Sohag">Sohag (Staff)</option>
-                    <option value="Cart Drawer">Cart Drawer Cash</option>
+                    {availablePayers.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
             </div>
+
+            {paidByName === 'Other Person' && (
+              <div>
+                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">
+                  Enter Payer Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Delivery Partner"
+                  value={customPayer}
+                  onChange={(e) => setCustomPayer(e.target.value)}
+                  className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 pt-1">

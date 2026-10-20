@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   DailySession, 
   DailyInventoryItem, 
@@ -23,6 +23,7 @@ import { CashSettlementSection } from './CashSettlementSection';
 import { AdminLogin } from './AdminLogin';
 import { StaffAccountsModal } from './StaffAccountsModal';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { fetchStaffProfiles } from '../../lib/supabase';
 import { 
   getTodayDateString, 
   fetchAllDaysData, 
@@ -69,15 +70,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const [allDays, setAllDays] = useState<Record<string, DayData>>(HISTORICAL_DAYS);
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [staffProfiles, setStaffProfiles] = useState<any[]>([]);
 
   // Load live data from Supabase on mount (All hooks MUST be called before any conditional return)
   useEffect(() => {
     let isMounted = true;
     const loadSupabaseData = async () => {
       try {
-        const [daysData, logs] = await Promise.all([
+        const [daysData, logs, staffRes] = await Promise.all([
           fetchAllDaysData(),
           fetchAuditLogs(),
+          fetchStaffProfiles(),
         ]);
         if (isMounted) {
           if (daysData && Object.keys(daysData).length > 0) {
@@ -85,6 +88,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
           }
           if (logs && logs.length > 0) {
             setAuditLogs(logs);
+          }
+          if (staffRes?.data && staffRes.data.length > 0) {
+            setStaffProfiles(staffRes.data);
           }
         }
       } catch (err) {
@@ -96,6 +102,25 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       isMounted = false;
     };
   }, []);
+
+  // Names of existing registered accounts (strictly no dummy names like Rabiul/Shohag and no tags)
+  const staffNames = useMemo(() => {
+    const names = new Set<string>();
+    if (profile?.full_name && profile.full_name.trim()) {
+      names.add(profile.full_name.trim());
+    }
+    if (staffProfiles && staffProfiles.length > 0) {
+      staffProfiles.forEach((p) => {
+        if (p.full_name && p.full_name.trim()) {
+          names.add(p.full_name.trim());
+        }
+      });
+    }
+    if (names.size === 0 && user?.email) {
+      names.add(user.email.split('@')[0]);
+    }
+    return Array.from(names);
+  }, [profile, staffProfiles, user]);
 
   // Show clean spinner while Supabase authentication is restoring from localStorage
   if (isLoading) {
@@ -573,6 +598,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onDeleteExpense={handleDeleteExpense}
             onBack={() => setActiveTab('overview')}
             isLocked={session.isLocked && !isSuperAdmin}
+            staffNames={staffNames}
           />
         )}
 
@@ -589,6 +615,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onToggleLock={handleToggleLock}
             onBack={() => setActiveTab('overview')}
             isSuperAdmin={isSuperAdmin}
+            staffNames={staffNames}
           />
         )}
 
@@ -695,7 +722,13 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       {isSuperAdmin && (
         <StaffAccountsModal
           isOpen={isStaffModalOpen}
-          onClose={() => setIsStaffModalOpen(false)}
+          onClose={async () => {
+            setIsStaffModalOpen(false);
+            const staffRes = await fetchStaffProfiles();
+            if (staffRes?.data && staffRes.data.length > 0) {
+              setStaffProfiles(staffRes.data);
+            }
+          }}
           currentUserEmail={user.email || ''}
         />
       )}

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DailySession, DailyPayout, DailyInventoryItem, DailyExpense } from '../../types';
-import { FREQUENT_PAYOUT_RECIPIENTS } from '../../data/mockDailyData';
 import { 
   Wallet, 
   ArrowLeft, 
@@ -29,6 +28,7 @@ interface CashSettlementSectionProps {
   onToggleLock: () => void;
   onBack: () => void;
   isSuperAdmin: boolean;
+  staffNames?: string[];
 }
 
 export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
@@ -43,9 +43,22 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   onToggleLock,
   onBack,
   isSuperAdmin,
+  staffNames = [],
 }) => {
+  // Available payout recipients derived strictly from real registered accounts (no dummy names or tags)
+  const availableRecipients = useMemo(() => {
+    const list: string[] = [];
+    if (staffNames && staffNames.length > 0) {
+      staffNames.forEach((n) => list.push(n));
+    } else {
+      list.push('Tamjid');
+    }
+    list.push('Other Person');
+    return list;
+  }, [staffNames]);
+
   // Payout input states
-  const [recipient, setRecipient] = useState(FREQUENT_PAYOUT_RECIPIENTS[0]);
+  const [recipient, setRecipient] = useState(availableRecipients[0] || 'Other Person');
   const [customRecipient, setCustomRecipient] = useState('');
   const [payoutAmount, setPayoutAmount] = useState('500');
   const [payoutType, setPayoutType] = useState<DailyPayout['payoutType']>('Staff Daily Pay');
@@ -81,7 +94,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
       sessionDate: session.sessionDate,
       recipientName: finalRecipient,
       amount: amountNum,
-      payoutType: finalRecipient.includes('Owner') ? 'Owner Withdrawal' : payoutType,
+      payoutType: payoutType,
       notes: payoutNotes || undefined,
     });
 
@@ -205,7 +218,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                   onChange={(e) => setRecipient(e.target.value)}
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 pr-8 text-xs font-bold text-zinc-800 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 appearance-none shadow-2xs cursor-pointer transition"
                 >
-                  {FREQUENT_PAYOUT_RECIPIENTS.map((name) => (
+                  {availableRecipients.map((name) => (
                     <option key={name} value={name}>
                       {name}
                     </option>
@@ -258,15 +271,32 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Note (Optional)</label>
-                <input
-                  type="text"
-                  value={payoutNotes}
-                  onChange={(e) => setPayoutNotes(e.target.value)}
-                  placeholder="e.g. Shift pay"
-                  className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                />
+                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Payout Type</label>
+                <div className="relative">
+                  <select
+                    value={payoutType}
+                    onChange={(e) => setPayoutType(e.target.value as any)}
+                    className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2 pr-7 text-xs font-semibold text-zinc-800 focus:outline-none focus:ring-1 focus:ring-orange-500 appearance-none shadow-2xs cursor-pointer transition"
+                  >
+                    <option value="Staff Daily Pay">Staff Daily Pay</option>
+                    <option value="Owner Withdrawal">Owner Withdrawal</option>
+                    <option value="Profit Share">Profit Share</option>
+                    <option value="Emergency Cart Expense">Emergency Cart Expense</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Note (Optional)</label>
+              <input
+                type="text"
+                value={payoutNotes}
+                onChange={(e) => setPayoutNotes(e.target.value)}
+                placeholder="e.g. Shift pay, emergency cart items..."
+                className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
             </div>
 
             <button

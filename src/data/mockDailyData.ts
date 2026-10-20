@@ -22,9 +22,6 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 
 export const FREQUENT_PAYOUT_RECIPIENTS = [
-  'Tamjid (Owner)',
-  'Rabiul (Chef)',
-  'Sohag (Staff)',
   'Other Person',
 ];
 
