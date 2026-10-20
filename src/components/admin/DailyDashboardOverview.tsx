@@ -30,6 +30,7 @@ interface DailyDashboardOverviewProps {
   onSelectDate: (date: string) => void;
   onNavigateTab: (tab: 'opening' | 'closing' | 'expenses' | 'cash') => void;
   onToggleLock?: () => void;
+  onStartShift?: (openingCash: number) => void;
   isSuperAdmin: boolean;
   allSessionsData: Record<string, DayData>;
 }
@@ -43,6 +44,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
   onSelectDate,
   onNavigateTab,
   onToggleLock,
+  onStartShift,
   isSuperAdmin,
   allSessionsData,
 }) => {
@@ -52,6 +54,8 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
   const [endDate, setEndDate] = useState(selectedDate);
   const [isDownloadingAnalytics, setIsDownloadingAnalytics] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+  const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+  const [openingCashInput, setOpeningCashInput] = useState('1000');
 
   const isOperated = Boolean(session);
   const todayStr = useMemo(() => getTodayDateString(), []);
@@ -441,23 +445,38 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
 
       {/* 2. IF CART WAS NOT OPERATED ON THIS DAY */}
       {!session ? (
-        <div className="bg-white rounded-2xl p-5 border border-zinc-200 text-center space-y-2 shadow-xs font-sans">
-          <div className="w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center mx-auto">
-            <Store className="w-5 h-5 text-zinc-500" />
+        <div className="bg-white rounded-2xl p-5 border border-zinc-200 text-center space-y-3 shadow-xs font-sans">
+          <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto border border-orange-200">
+            <Store className="w-6 h-6 text-orange-600" />
           </div>
           <div>
             <h3 className="font-bold text-sm text-zinc-900">
-              Food Cart Closed
+              {isViewingToday ? "Food Cart Not Started Today" : "Food Cart Closed"}
             </h3>
-            <p className="text-xs text-zinc-500 mt-0.5 max-w-xs mx-auto">
-              No business operations were recorded for {formattedDate}.
+            <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+              {isViewingToday 
+                ? "Start today's shift to begin recording morning stock, sales, expenses, and cash drawer counts."
+                : `No business operations were recorded for ${formattedDate}.`}
             </p>
           </div>
-          {!isViewingToday && (
-            <div className="pt-1">
+
+          {isViewingToday ? (
+            <div className="pt-1 flex justify-center">
               <button
+                type="button"
+                onClick={() => setIsStartModalOpen(true)}
+                className="w-full max-w-xs py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
+              >
+                <Sun className="w-4 h-4 text-white" />
+                <span>Start Today's Shift</span>
+              </button>
+            </div>
+          ) : (
+            <div className="pt-1 flex justify-center">
+              <button
+                type="button"
                 onClick={() => onSelectDate(todayStr)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
+                className="px-3.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
               >
                 Back to Today
               </button>
@@ -674,6 +693,82 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
           onConfirm={onToggleLock}
           onClose={() => setIsLockModalOpen(false)}
         />
+      )}
+
+      {/* Start Shift Modal */}
+      {isStartModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl p-5 border border-zinc-200 shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between pb-2 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <Sun className="w-4 h-4 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-zinc-900 leading-tight">
+                    Start Today's Shift
+                  </h3>
+                  <p className="text-[10px] text-zinc-500">
+                    {formattedDate} • Open drawer & begin cart day
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStartModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-700 p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                Opening Khuchra Cash (৳ Taken from Reserve for Drawer Change)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={openingCashInput}
+                  onChange={(e) => setOpeningCashInput(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 rounded-xl px-3.5 py-2.5 text-zinc-900 font-bold text-sm focus:outline-none transition"
+                />
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                  BDT
+                </span>
+              </div>
+              <span className="text-[10px] text-zinc-500 block mt-1">
+                Default cart starting change money is ৳1,000.
+              </span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsStartModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = parseFloat(openingCashInput) || 1000;
+                  if (onStartShift) {
+                    onStartShift(val);
+                  }
+                  setIsStartModalOpen(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
+              >
+                <Sun className="w-3.5 h-3.5 text-white" />
+                <span>Open Cart</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

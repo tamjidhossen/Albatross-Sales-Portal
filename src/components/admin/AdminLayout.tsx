@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DailySession, 
   DailyInventoryItem, 
@@ -12,7 +12,8 @@ import {
   INITIAL_AUDIT_LOGS,
   HISTORICAL_DAYS,
   DayData,
-  createDefaultSessionForDate
+  createDefaultSessionForDate,
+  INITIAL_PRODUCTS
 } from '../../data/mockDailyData';
 import { DailyDashboardOverview } from './DailyDashboardOverview';
 import { MorningStockSection } from './MorningStockSection';
@@ -21,7 +22,21 @@ import { ExpensesSection } from './ExpensesSection';
 import { CashSettlementSection } from './CashSettlementSection';
 import { AdminLogin } from './AdminLogin';
 import { StaffAccountsModal } from './StaffAccountsModal';
-import { getTodayDateString } from '../../services/dailyOperationsService';
+import { 
+  getTodayDateString, 
+  fetchAllDaysData, 
+  fetchProducts, 
+  fetchAuditLogs, 
+  startShiftSession, 
+  persistSession, 
+  persistInventoryItems, 
+  persistExpense, 
+  deleteExpenseFromDB, 
+  persistPayout, 
+  deletePayoutFromDB, 
+  updateSessionLock, 
+  insertAuditLog 
+} from '../../services/dailyOperationsService';
 import { useAuth, AuthProvider } from '../../contexts/AuthContext';
 import { 
   ArrowLeft, 
@@ -68,6 +83,33 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const userRole: Role = profile?.role || 'admin';
   const isSuperAdmin = userRole === 'super_admin';
 
+  // Load live data from Supabase on mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadSupabaseData = async () => {
+      try {
+        const [daysData, logs] = await Promise.all([
+          fetchAllDaysData(),
+          fetchAuditLogs(),
+        ]);
+        if (isMounted) {
+          if (daysData && Object.keys(daysData).length > 0) {
+            setAllDays(daysData);
+          }
+          if (logs && logs.length > 0) {
+            setAuditLogs(logs);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching data from Supabase:', err);
+      }
+    };
+    loadSupabaseData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Helper: Append Audit Log
   const logAudit = (
     entityType: AuditLog['entityType'],
@@ -92,6 +134,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+    insertAuditLog(newLog);
   };
 
   // Helper: Mutate the current active day
@@ -106,15 +149,19 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     });
   };
 
-  // Open Cart For a Date where cart was not operated
-  const handleOpenCartForDate = (dateStr: string) => {
-    const newDay = createDefaultSessionForDate(dateStr);
+  // Start Shift for Today / Selected Date
+  const handleStartShift = async (openingCash: number = 1000) => {
+    let prods = await fetchProducts();
+    if (!prods || prods.length === 0) {
+      prods = INITIAL_PRODUCTS;
+    }
+    const started = await startShiftSession(selectedDate, openingCash, prods);
+    const newDay = started || createDefaultSessionForDate(selectedDate, 0, openingCash);
     setAllDays((prev) => ({
       ...prev,
-      [dateStr]: newDay,
+      [selectedDate]: newDay,
     }));
-    setSelectedDate(dateStr);
-    logAudit('session', dateStr, 'INSERT', 'status', null, 'open', `Opened new shift session for ${dateStr}`);
+    logAudit('session', selectedDate, 'INSERT', 'status', null, 'open', `Started shift for ${selectedDate} with ৳${openingCash} opening cash`);
   };
 
   // Recalculate Session Totals Helper
@@ -136,7 +183,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const expected = cur.session.openingCash + netRevenue - totalExp - totalPay;
       const diff = actualCash - expected;
 
-      return {
+      const updatedDay: DayData = {
         ...cur,
         items: nextInventory,
         expenses: nextExpenses,
@@ -156,6 +203,10 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
           cashDifference: diff,
         },
       };
+
+      persistSession(updatedDay.session);
+      persistInventoryItems(nextInventory);
+      return updatedDay;
     });
   };
 
@@ -250,6 +301,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       id: `exp-${Date.now()}`,
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
+    persistExpense(created);
     const updated = [created, ...expenses];
     recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
     logAudit('expense', created.id, 'INSERT', 'amount', null, newExp.amount, `Added expense for ${newExp.itemName}`);
@@ -259,6 +311,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     if (!activeDay || activeDay.session.isLocked) return;
     const target = expenses.find((e) => e.id === id);
     if (!target) return;
+    deleteExpenseFromDB(id);
     const updated = expenses.filter((e) => e.id !== id);
     recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
     logAudit('expense', id, 'DELETE', 'amount', target.amount, null, `Deleted expense: ${target.itemName}`);
@@ -272,6 +325,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       id: `pay-${Date.now()}`,
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
+    persistPayout(created);
     const updated = [created, ...payouts];
     recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
     logAudit('payout', created.id, 'INSERT', 'amount', null, newPayout.amount, `Paid ${newPayout.recipientName} ৳${newPayout.amount}`);
@@ -281,6 +335,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     if (!activeDay || activeDay.session.isLocked) return;
     const target = payouts.find((p) => p.id === id);
     if (!target) return;
+    deletePayoutFromDB(id);
     const updated = payouts.filter((p) => p.id !== id);
     recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
     logAudit('payout', id, 'DELETE', 'amount', target.amount, null, `Removed payout to ${target.recipientName}`);
@@ -291,15 +346,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     if (!activeDay || activeDay.session.isLocked) return;
     updateCurrentDay((cur) => {
       const exp = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
+      const updatedSession: DailySession = {
+        ...cur.session,
+        openingCash: khuchra,
+        khuchraTakenFromReserve: khuchra,
+        expectedClosingCash: exp,
+        cashDifference: cur.session.actualCashCounted - exp,
+      };
+      persistSession(updatedSession);
       return {
         ...cur,
-        session: {
-          ...cur.session,
-          openingCash: khuchra,
-          khuchraTakenFromReserve: khuchra,
-          expectedClosingCash: exp,
-          cashDifference: cur.session.actualCashCounted - exp,
-        },
+        session: updatedSession,
       };
     });
     logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, 'Adjusted morning khuchra cash');
@@ -313,15 +370,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const netCashGenerated = countedDrawerCash - khuchra;
       const nextReserve = cur.session.openingSavedCash + netCashGenerated;
       const diff = countedDrawerCash - cur.session.expectedClosingCash;
+      const updatedSession: DailySession = {
+        ...cur.session,
+        actualCashCounted: countedDrawerCash,
+        cashDifference: diff,
+        closingSavedCash: nextReserve,
+        transferredToReserve: countedDrawerCash,
+      };
+      persistSession(updatedSession);
       return {
         ...cur,
-        session: {
-          ...cur.session,
-          actualCashCounted: countedDrawerCash,
-          cashDifference: diff,
-          closingSavedCash: nextReserve,
-          transferredToReserve: countedDrawerCash,
-        },
+        session: updatedSession,
       };
     });
     logAudit('session', selectedDate, 'UPDATE', 'closingDrawerCash', activeDay.session.actualCashCounted, countedDrawerCash, `Saved closing drawer cash: ৳${countedDrawerCash}`);
@@ -331,15 +390,20 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const handleToggleLock = () => {
     if (!activeDay) return;
     const nextLocked = !activeDay.session.isLocked;
-    updateCurrentDay((cur) => ({
-      ...cur,
-      session: {
+    updateSessionLock(selectedDate, nextLocked);
+    updateCurrentDay((cur) => {
+      const updatedSession: DailySession = {
         ...cur.session,
         isLocked: nextLocked,
         status: nextLocked ? 'closed' : 'open',
         closedAt: nextLocked ? new Date().toISOString() : undefined,
-      },
-    }));
+      };
+      persistSession(updatedSession);
+      return {
+        ...cur,
+        session: updatedSession,
+      };
+    });
     logAudit('session', selectedDate, nextLocked ? 'LOCK' : 'UNLOCK', 'isLocked', activeDay.session.isLocked ? 'locked' : 'unlocked', nextLocked ? 'locked' : 'unlocked', `${nextLocked ? 'Locked' : 'Unlocked'} day session`);
   };
 
@@ -423,6 +487,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onSelectDate={(date) => setSelectedDate(date)}
             onNavigateTab={(tab) => setActiveTab(tab)}
             onToggleLock={handleToggleLock}
+            onStartShift={handleStartShift}
             isSuperAdmin={isSuperAdmin}
             allSessionsData={allDays}
           />
@@ -436,19 +501,30 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             </div>
             <div>
               <h3 className="font-extrabold text-sm text-zinc-900">
-                Food Cart Closed
+                {selectedDate === getTodayDateString() ? "Food Cart Not Started Today" : "Food Cart Closed"}
               </h3>
               <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                The food cart was not opened on {selectedDate}. No inventory, expenses, or cash drawer records exist for this day.
+                {selectedDate === getTodayDateString()
+                  ? "Today's shift has not been started yet. Start the shift to record opening inventory and cash drawer."
+                  : `The food cart was not opened on ${selectedDate}. No inventory, expenses, or cash drawer records exist for this day.`}
               </p>
             </div>
-            <div className="pt-2 flex justify-center">
+            <div className="pt-2 flex flex-wrap justify-center gap-2">
               <button
                 onClick={() => setActiveTab('overview')}
                 className="px-4 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
               >
                 Back to Overview
               </button>
+              {selectedDate === getTodayDateString() && (
+                <button
+                  onClick={() => handleStartShift(1000)}
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs active:scale-98"
+                >
+                  <Sun className="w-3.5 h-3.5 text-white" />
+                  <span>Start Shift (৳1,000 Khuchra)</span>
+                </button>
+              )}
             </div>
           </div>
         )}
