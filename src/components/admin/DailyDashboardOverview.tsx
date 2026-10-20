@@ -15,7 +15,8 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Store
+  Store,
+  Plus
 } from 'lucide-react';
 import { downloadAnalyticsReportImage } from '../../utils/generateAnalyticsImage';
 import { LockConfirmationModal } from './LockConfirmationModal';
@@ -436,9 +437,28 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
 
         {/* Notice for Locked historical view */}
         {isOperated && session?.isLocked && (
-          <div className="bg-zinc-100/90 border border-zinc-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
-            <Lock className="w-3 h-3 text-zinc-500 shrink-0" />
-            <span>Shift sealed. All calculations view-only.</span>
+          <div className={`rounded-lg px-2.5 py-1.5 flex items-center justify-between text-[11px] border ${
+            isSuperAdmin
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
+              : 'bg-zinc-100/90 border border-zinc-200 text-zinc-600'
+          }`}>
+            <div className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                {isSuperAdmin
+                  ? '🔒 Shift locked for staff • Super Admin edit access enabled'
+                  : 'Shift sealed. All calculations view-only.'}
+              </span>
+            </div>
+            {isSuperAdmin && onToggleLock && (
+              <button
+                type="button"
+                onClick={onToggleLock}
+                className="font-bold text-[10px] underline hover:text-amber-950 ml-2 shrink-0"
+              >
+                Unlock Day
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -472,11 +492,21 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="pt-1 flex justify-center">
+            <div className="pt-1 flex flex-col sm:flex-row items-center justify-center gap-2">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setIsStartModalOpen(true)}
+                  className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4 text-white" />
+                  <span>Add Shift Record for {formattedDate}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onSelectDate(todayStr)}
-                className="px-3.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
+                className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
               >
                 Back to Today
               </button>
@@ -706,10 +736,10 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm text-zinc-900 leading-tight">
-                    Start Today's Shift
+                    {isViewingToday ? "Start Today's Shift" : `Add Shift Record for ${formattedDate}`}
                   </h3>
                   <p className="text-[10px] text-zinc-500">
-                    {formattedDate} • Open drawer & begin cart day
+                    {formattedDate} • {isViewingToday ? 'Open drawer & begin cart day' : 'Retroactive operations entry'}
                   </p>
                 </div>
               </div>
@@ -764,7 +794,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
               >
                 <Sun className="w-3.5 h-3.5 text-white" />
-                <span>Open Cart</span>
+                <span>{isViewingToday ? 'Open Cart' : 'Create Record'}</span>
               </button>
             </div>
           </div>

@@ -64,6 +64,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
   const isMatch = session.cashDifference === 0;
   const isShortage = session.cashDifference < 0;
+  const isEditable = !session.isLocked || isSuperAdmin;
 
   const handleKhuchraBlur = () => {
     const val = parseFloat(khuchraInput) || 0;
@@ -135,8 +136,14 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
       </div>
 
       {session.isLocked && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 text-[11px] text-amber-900 font-semibold text-center">
-          Day is locked. All records are view-only.
+        <div className={`rounded-xl p-2 text-[11px] font-semibold text-center border ${
+          isSuperAdmin 
+            ? 'bg-amber-50 border-amber-200 text-amber-900' 
+            : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+        }`}>
+          {isSuperAdmin 
+            ? '🔒 Day is locked for staff • Super Admin edit access enabled' 
+            : 'Day is locked. All records are view-only.'}
         </div>
       )}
 
@@ -158,7 +165,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
             <input
               type="number"
               min="0"
-              disabled={session.isLocked}
+              disabled={!isEditable}
               value={khuchraInput}
               onChange={(e) => setKhuchraInput(e.target.value)}
               onBlur={handleKhuchraBlur}
@@ -185,7 +192,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
         </div>
 
         {/* Add Payout Form */}
-        {!session.isLocked && (
+        {isEditable && (
           <form onSubmit={handleAddPayoutSubmit} className="bg-zinc-50 rounded-xl p-2.5 border border-zinc-200 space-y-2 text-xs">
             {/* Recipient Dropdown (Polished) */}
             <div>
@@ -290,7 +297,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-red-600 text-xs">-৳{p.amount}</span>
 
-                    {!session.isLocked && (
+                    {isEditable && (
                       <>
                         {isConfirming ? (
                           <div className="flex items-center gap-1 bg-red-50 border border-red-200 p-0.5 rounded">
@@ -370,7 +377,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
             <input
               type="number"
               min="0"
-              disabled={session.isLocked}
+              disabled={!isEditable}
               value={closingDrawerInput}
               onChange={(e) => setClosingDrawerInput(e.target.value)}
               placeholder="e.g. 7950"
@@ -378,7 +385,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
             />
           </div>
 
-          {!session.isLocked && (
+          {isEditable && (
             <button
               type="submit"
               className="w-full bg-zinc-900 hover:bg-orange-600 text-white font-bold py-2 rounded-lg text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"

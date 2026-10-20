@@ -223,7 +223,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
   // Morning Stock Update Handler
   const handleUpdateMorningItem = (productId: string, morningNewPrepared: number) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const updated = inventoryItems.map((item) => {
       if (item.productId === productId) {
         const totalAvail = item.morningCarriedOver + morningNewPrepared;
@@ -240,12 +240,12 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     });
 
     recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, morningNewPrepared, 'Updated morning production');
+    logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, morningNewPrepared, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated morning production`);
   };
 
   // Add New Product to Menu & Session
   const handleAddProduct = (name: string, price: number, prepared: number) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const newId = `prod-${Date.now()}`;
     const newItem: DailyInventoryItem = {
       id: `inv-${Date.now()}`,
@@ -264,7 +264,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     };
     const next = [...inventoryItems, newItem];
     recalculateSession(next, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('product', newId, 'INSERT', 'name', null, name, `Added product ${name} @ ৳${price}`);
+    logAudit('product', newId, 'INSERT', 'name', null, name, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Added product ${name} @ ৳${price}`);
   };
 
   // Night Stock Count Handler (Simplified: Sold & Waste)
@@ -273,7 +273,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     sold: number,
     waste: number
   ) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const updated = inventoryItems.map((item) => {
       if (item.productId === productId) {
         const reusable = Math.max(0, item.totalAvailable - sold - waste);
@@ -290,23 +290,23 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     });
 
     recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('inventory', productId, 'UPDATE', 'nightCount', undefined, `${sold} sold, ${waste} waste`, 'Updated closing counts');
+    logAudit('inventory', productId, 'UPDATE', 'nightCount', undefined, `${sold} sold, ${waste} waste`, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated closing counts`);
   };
 
   // Discounts Update
   const handleUpdateDiscounts = (discounts: number) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     updateCurrentDay((cur) => ({
       ...cur,
       session: { ...cur.session, estimatedDiscounts: discounts },
     }));
     recalculateSession(inventoryItems, expenses, payouts, discounts, activeDay.session.actualCashCounted);
-    logAudit('session', selectedDate, 'UPDATE', 'estimatedDiscounts', activeDay.session.estimatedDiscounts, discounts, 'Updated estimated discounts');
+    logAudit('session', selectedDate, 'UPDATE', 'estimatedDiscounts', activeDay.session.estimatedDiscounts, discounts, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated estimated discounts`);
   };
 
   // Expense Handlers
   const handleAddExpense = (newExp: Omit<DailyExpense, 'id' | 'createdAt'>) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const created: DailyExpense = {
       ...newExp,
       id: `exp-${Date.now()}`,
@@ -315,22 +315,22 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     persistExpense(created);
     const updated = [created, ...expenses];
     recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('expense', created.id, 'INSERT', 'amount', null, newExp.amount, `Added expense for ${newExp.itemName}`);
+    logAudit('expense', created.id, 'INSERT', 'amount', null, newExp.amount, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Added expense for ${newExp.itemName}`);
   };
 
   const handleDeleteExpense = (id: string) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const target = expenses.find((e) => e.id === id);
     if (!target) return;
     deleteExpenseFromDB(id);
     const updated = expenses.filter((e) => e.id !== id);
     recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('expense', id, 'DELETE', 'amount', target.amount, null, `Deleted expense: ${target.itemName}`);
+    logAudit('expense', id, 'DELETE', 'amount', target.amount, null, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Deleted expense: ${target.itemName}`);
   };
 
   // Payout Handlers
   const handleAddPayout = (newPayout: Omit<DailyPayout, 'id' | 'createdAt'>) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const created: DailyPayout = {
       ...newPayout,
       id: `pay-${Date.now()}`,
@@ -339,22 +339,22 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     persistPayout(created);
     const updated = [created, ...payouts];
     recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('payout', created.id, 'INSERT', 'amount', null, newPayout.amount, `Paid ${newPayout.recipientName} ৳${newPayout.amount}`);
+    logAudit('payout', created.id, 'INSERT', 'amount', null, newPayout.amount, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Paid ${newPayout.recipientName} ৳${newPayout.amount}`);
   };
 
   const handleDeletePayout = (id: string) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const target = payouts.find((p) => p.id === id);
     if (!target) return;
     deletePayoutFromDB(id);
     const updated = payouts.filter((p) => p.id !== id);
     recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('payout', id, 'DELETE', 'amount', target.amount, null, `Removed payout to ${target.recipientName}`);
+    logAudit('payout', id, 'DELETE', 'amount', target.amount, null, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Removed payout to ${target.recipientName}`);
   };
 
   // Khuchra Cash Handler
   const handleUpdateKhuchra = (khuchra: number) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     updateCurrentDay((cur) => {
       const exp = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
       const updatedSession: DailySession = {
@@ -370,12 +370,12 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         session: updatedSession,
       };
     });
-    logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, 'Adjusted morning khuchra cash');
+    logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Adjusted morning khuchra cash`);
   };
 
   // Save Drawer Cash to Reserve Handler
   const handleSaveDrawerCash = (countedDrawerCash: number) => {
-    if (!activeDay || activeDay.session.isLocked) return;
+    if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     updateCurrentDay((cur) => {
       const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
       const netCashGenerated = countedDrawerCash - khuchra;
@@ -538,7 +538,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onUpdateItem={handleUpdateMorningItem}
             onAddProduct={handleAddProduct}
             onBack={() => setActiveTab('overview')}
-            isLocked={session.isLocked}
+            isLocked={session.isLocked && !isSuperAdmin}
           />
         )}
 
@@ -549,7 +549,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onUpdateNightCount={handleUpdateNightCount}
             onUpdateDiscounts={handleUpdateDiscounts}
             onBack={() => setActiveTab('overview')}
-            isLocked={session.isLocked}
+            isLocked={session.isLocked && !isSuperAdmin}
           />
         )}
 
@@ -559,7 +559,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onAddExpense={handleAddExpense}
             onDeleteExpense={handleDeleteExpense}
             onBack={() => setActiveTab('overview')}
-            isLocked={session.isLocked}
+            isLocked={session.isLocked && !isSuperAdmin}
           />
         )}
 
