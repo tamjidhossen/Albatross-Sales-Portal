@@ -53,7 +53,8 @@ import {
   Wallet,
   History,
   Store,
-  Users
+  Users,
+  Calendar
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -227,6 +228,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     }
     return 'User';
   }, [profile, user]);
+
+  // Clean date string for top bar header (date of operation)
+  const formattedSelectedDate = useMemo(() => {
+    try {
+      const parts = selectedDate.split('-');
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
 
   // Show clean spinner while Supabase authentication is restoring from localStorage
   if (isLoading) {
@@ -669,6 +681,19 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             </span>
           </div>
         </div>
+
+        {/* Center: Selected Operating Date */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('overview')}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100/90 hover:bg-zinc-200/80 border border-zinc-200/90 text-zinc-800 shadow-2xs transition active:scale-95 cursor-pointer"
+          title="Selected operating date (tap to open overview)"
+        >
+          <Calendar className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+          <span className="text-[11px] font-bold tracking-tight">
+            {formattedSelectedDate}
+          </span>
+        </button>
 
         {/* Right: Team Management & Logout */}
         <div className="flex items-center gap-1.5">

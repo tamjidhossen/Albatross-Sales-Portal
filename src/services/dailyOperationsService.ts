@@ -637,10 +637,10 @@ export const startShiftSession = async (
       totalExpenses: 0,
       totalPayouts: 0,
       expectedClosingCash: openingCash,
-      actualCashCounted: openingCash,
-      cashDifference: 0,
+      actualCashCounted: 0,
+      cashDifference: -openingCash,
       transferredToReserve: 0,
-      closingCartCash: openingCash,
+      closingCartCash: 0,
       closingSavedCash: prevSaved,
       notes: '',
     };

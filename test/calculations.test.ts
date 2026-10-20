@@ -1,8 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { DailySession, DailyInventoryItem, DailyExpense, DailyPayout } from '../src/types';
+import { createDefaultSessionForDate } from '../src/data/mockDailyData';
 
 describe('Financial Math & Settlement Engine', () => {
+  it('defaults closing drawer cash to zero on newly created sessions', () => {
+    const newSessionData = createDefaultSessionForDate('2026-10-22', 20000, 1000);
+    assert.strictEqual(newSessionData.session.actualCashCounted, 0, 'actualCashCounted must be 0 by default');
+    assert.strictEqual(newSessionData.session.closingCartCash, 0, 'closingCartCash must be 0 by default');
+    assert.strictEqual(newSessionData.session.expectedClosingCash, 1000, 'expectedClosingCash is 1000 when openingKhuchra is 1000 and sales are 0');
+  });
   it('correctly calculates gross revenue from items', () => {
     const items: DailyInventoryItem[] = [
       {

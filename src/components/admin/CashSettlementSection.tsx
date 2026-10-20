@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DailySession, DailyPayout, DailyInventoryItem, DailyExpense } from '../../types';
 import { 
   Wallet, 
@@ -69,11 +69,24 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   const khuchraVal = session.khuchraTakenFromReserve || session.openingCash || 0;
   const [khuchraInput, setKhuchraInput] = useState(khuchraVal === 0 ? '' : khuchraVal.toString());
 
-  // Closing drawer cash state
-  const [closingDrawerInput, setClosingDrawerInput] = useState(session.actualCashCounted === 0 ? '' : session.actualCashCounted.toString());
+  // Closing drawer cash state (defaults to 0 / empty for uncounted shifts)
+  const isDefaultUncounted = session.status === 'open' && session.actualCashCounted === session.openingCash && (!session.transferredToReserve || session.transferredToReserve === 0);
+  const initialDrawerVal = (session.actualCashCounted === 0 || isDefaultUncounted) ? '' : session.actualCashCounted.toString();
+  const [closingDrawerInput, setClosingDrawerInput] = useState(initialDrawerVal);
   const [isSavedDrawer, setIsSavedDrawer] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+
+  // Sync inputs if selected date or underlying session data updates
+  useEffect(() => {
+    const isUncounted = session.status === 'open' && session.actualCashCounted === session.openingCash && (!session.transferredToReserve || session.transferredToReserve === 0);
+    setClosingDrawerInput((session.actualCashCounted === 0 || isUncounted) ? '' : session.actualCashCounted.toString());
+  }, [session.sessionDate, session.actualCashCounted, session.status, session.openingCash, session.transferredToReserve]);
+
+  useEffect(() => {
+    const kVal = session.khuchraTakenFromReserve || session.openingCash || 0;
+    setKhuchraInput(kVal === 0 ? '' : kVal.toString());
+  }, [session.sessionDate, session.khuchraTakenFromReserve, session.openingCash]);
 
   const isMatch = session.cashDifference === 0;
   const isShortage = session.cashDifference < 0;
