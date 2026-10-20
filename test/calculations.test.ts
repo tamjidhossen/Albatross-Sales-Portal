@@ -92,3 +92,4 @@ describe('Financial Math & Settlement Engine', () => {
     assert.strictEqual(countedSurplus - expectedCash, 150);
   });
 });
+

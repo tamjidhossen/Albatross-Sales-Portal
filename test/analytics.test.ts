@@ -223,3 +223,4 @@ describe('Analytics Aggregation Engine', () => {
     assert.strictEqual(totalStockValue, (30 * 120) + (40 * 120)); // 3600 + 4800 = 8400
   });
 });
+

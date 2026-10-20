@@ -38,3 +38,4 @@ describe('Input Sanitization & Value Parsing', () => {
     assert.strictEqual(value, 0);
   });
 });
+
