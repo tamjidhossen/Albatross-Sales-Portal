@@ -22,6 +22,7 @@ import { ExpensesSection } from './ExpensesSection';
 import { CashSettlementSection } from './CashSettlementSection';
 import { AdminLogin } from './AdminLogin';
 import { StaffAccountsModal } from './StaffAccountsModal';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 import { 
   getTodayDateString, 
   fetchAllDaysData, 
@@ -56,7 +57,7 @@ interface AdminLayoutProps {
 }
 
 const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
-  const { user, profile, signOut, setDemoUser, isConfigured } = useAuth();
+  const { user, profile, isLoading, signOut, setDemoUser, isConfigured } = useAuth();
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>('overview');
@@ -68,22 +69,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
 
-  // Active day data for currently selected date (or null if cart not operated)
-  const activeDay = allDays[selectedDate] || null;
-  const session = activeDay?.session || null;
-  const inventoryItems = activeDay?.items || [];
-  const expenses = activeDay?.expenses || [];
-  const payouts = activeDay?.payouts || [];
-
-  // If user is not authenticated, show Admin Login
-  if (!user) {
-    return <AdminLogin onBackToLanding={onBackToLanding} />;
-  }
-
-  const userRole: Role = profile?.role || 'admin';
-  const isSuperAdmin = userRole === 'super_admin';
-
-  // Load live data from Supabase on mount
+  // Load live data from Supabase on mount (All hooks MUST be called before any conditional return)
   useEffect(() => {
     let isMounted = true;
     const loadSupabaseData = async () => {
@@ -109,6 +95,31 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       isMounted = false;
     };
   }, []);
+
+  // Show clean spinner while Supabase authentication is restoring from localStorage
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-4 font-sans">
+        <div className="w-9 h-9 rounded-full border-3 border-orange-500 border-t-transparent animate-spin mb-3" />
+        <span className="text-xs font-bold text-zinc-600 tracking-tight">Loading Albatross Portal...</span>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, show Admin Login
+  if (!user) {
+    return <AdminLogin onBackToLanding={onBackToLanding} />;
+  }
+
+  // Active day data for currently selected date (or null if cart not operated)
+  const activeDay = allDays[selectedDate] || null;
+  const session = activeDay?.session || null;
+  const inventoryItems = activeDay?.items || [];
+  const expenses = activeDay?.expenses || [];
+  const payouts = activeDay?.payouts || [];
+
+  const userRole: Role = profile?.role || 'admin';
+  const isSuperAdmin = userRole === 'super_admin';
 
   // Helper: Append Audit Log
   const logAudit = (
@@ -724,8 +735,10 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
 export const AdminLayout: React.FC<AdminLayoutProps> = (props) => {
   return (
-    <AuthProvider>
-      <AdminLayoutInner {...props} />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AdminLayoutInner {...props} />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
