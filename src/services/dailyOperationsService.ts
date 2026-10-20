@@ -7,7 +7,7 @@ import {
   AuditLog, 
   Product 
 } from '../types';
-import { DayData } from '../data/mockDailyData';
+import { DayData, INITIAL_PRODUCTS } from '../data/mockDailyData';
 
 export const getTodayDateString = (): string => {
   const d = new Date();
@@ -176,15 +176,46 @@ export const mapAuditLogToDB = (log: AuditLog) => ({
  * Fetch all master street menu products from database
  */
 export const fetchProducts = async (): Promise<Product[]> => {
-  if (!isSupabaseConfigured()) return [];
+  if (!isSupabaseConfigured()) return INITIAL_PRODUCTS;
   try {
+    // Check total products count in master products table
+    const { count, error: countErr } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true });
+
+    // If completely fresh table (count is 0), seed initial products once
+    if (!countErr && count === 0) {
+      const seedPayload = INITIAL_PRODUCTS.map((p) => ({
+        id: p.id,
+        name: p.name,
+        bengali_name: p.bengaliName || null,
+        default_price: p.defaultPrice,
+        is_active: true,
+        can_carryover: p.canCarryover ?? true,
+        sort_order: p.sortOrder ?? 0,
+      }));
+      await supabase.from('products').insert(seedPayload);
+    }
+
     const { data, error } = await supabase
       .from('products')
       .select('*')
       .eq('is_active', true)
       .order('sort_order', { ascending: true });
     
-    if (error || !data) return [];
+    if (error) {
+      console.warn('Failed to fetch products from Supabase, using fallback:', error);
+      return INITIAL_PRODUCTS;
+    }
+
+    if (!data || data.length === 0) {
+      // If table exists and has rows, but none are active, return empty list (user archived all)
+      if (count !== null && count > 0) {
+        return [];
+      }
+      return INITIAL_PRODUCTS;
+    }
+
     return data.map((p) => ({
       id: p.id,
       name: p.name,
@@ -195,7 +226,45 @@ export const fetchProducts = async (): Promise<Product[]> => {
       sortOrder: p.sort_order,
     }));
   } catch {
-    return [];
+    return INITIAL_PRODUCTS;
+  }
+};
+
+/**
+ * Add a new product to master products catalog
+ * Persists for all future days and shift openings
+ */
+export const createProductInDB = async (product: Product): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await supabase.from('products').upsert({
+      id: product.id,
+      name: product.name,
+      bengali_name: product.bengaliName || null,
+      default_price: product.defaultPrice,
+      is_active: true,
+      can_carryover: product.canCarryover ?? true,
+      sort_order: product.sortOrder ?? 99,
+    });
+  } catch (err) {
+    console.error('Failed to create product in DB:', err);
+  }
+};
+
+/**
+ * Soft-delete (archive) a product in master products catalog
+ * Ensures the product NEVER appears in future shifts or opening stock,
+ * while leaving past daily_inventory records, sales history, and range summaries 100% intact.
+ */
+export const archiveProductInDB = async (productId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await supabase
+      .from('products')
+      .update({ is_active: false })
+      .eq('id', productId);
+  } catch (err) {
+    console.error('Failed to archive product in DB:', err);
   }
 };
 
@@ -302,7 +371,7 @@ export const startShiftSession = async (
   if (!isSupabaseConfigured()) return null;
 
   try {
-    // 1. Get latest closing saved cash from previous day
+    // 1. Get latest closing saved cash and date from previous day
     const { data: latestSessions } = await supabase
       .from('daily_sessions')
       .select('closing_saved_cash, session_date')
@@ -311,6 +380,21 @@ export const startShiftSession = async (
       .limit(1);
 
     const prevSaved = Number(latestSessions?.[0]?.closing_saved_cash) || 0;
+    const prevDate = latestSessions?.[0]?.session_date;
+
+    // 2. Fetch yesterday's closing usable leftovers for carryover
+    const prevLeftovers: Record<string, number> = {};
+    if (prevDate) {
+      const { data: prevInv } = await supabase
+        .from('daily_inventory')
+        .select('product_id, closing_usable_leftover')
+        .eq('session_date', prevDate);
+      if (prevInv) {
+        prevInv.forEach((row) => {
+          prevLeftovers[row.product_id] = Number(row.closing_usable_leftover) || 0;
+        });
+      }
+    }
 
     const newSession: DailySession = {
       sessionDate,
@@ -339,22 +423,25 @@ export const startShiftSession = async (
     // Insert session into Supabase
     await supabase.from('daily_sessions').insert(mapSessionToDB(newSession));
 
-    // Preload inventory items for each active product
-    const inventoryItems: DailyInventoryItem[] = activeProducts.map((p) => ({
-      id: `${sessionDate}-${p.id}`,
-      sessionDate,
-      productId: p.id,
-      productName: p.name,
-      unitPrice: p.defaultPrice,
-      morningCarriedOver: 0,
-      morningNewPrepared: 0,
-      totalAvailable: 0,
-      closingCounted: 0,
-      closingUsableLeftover: 0,
-      closingWasted: 0,
-      quantitySold: 0,
-      estimatedRevenue: 0,
-    }));
+    // Preload inventory items for each active product with carryover
+    const inventoryItems: DailyInventoryItem[] = activeProducts.map((p) => {
+      const carried = p.canCarryover ? (prevLeftovers[p.id] || 0) : 0;
+      return {
+        id: `${sessionDate}-${p.id}`,
+        sessionDate,
+        productId: p.id,
+        productName: p.name,
+        unitPrice: p.defaultPrice,
+        morningCarriedOver: carried,
+        morningNewPrepared: 0,
+        totalAvailable: carried,
+        closingCounted: carried,
+        closingUsableLeftover: carried,
+        closingWasted: 0,
+        quantitySold: 0,
+        estimatedRevenue: 0,
+      };
+    });
 
     if (inventoryItems.length > 0) {
       const invPayload = inventoryItems.map((item) => ({
@@ -362,10 +449,10 @@ export const startShiftSession = async (
         product_id: item.productId,
         product_name: item.productName,
         unit_price: item.unitPrice,
-        morning_carried_over: 0,
+        morning_carried_over: item.morningCarriedOver,
         morning_new_prepared: 0,
-        closing_counted: 0,
-        closing_usable_leftover: 0,
+        closing_counted: item.closingCounted,
+        closing_usable_leftover: item.closingUsableLeftover,
         closing_wasted: 0,
       }));
       await supabase.from('daily_inventory').upsert(invPayload, { onConflict: 'session_date,product_id' });

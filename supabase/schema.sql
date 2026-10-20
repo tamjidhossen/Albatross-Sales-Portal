@@ -385,9 +385,9 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow authenticated read profiles" ON public.profiles FOR SELECT TO authenticated USING (TRUE);
 CREATE POLICY "Allow super_admin update profiles" ON public.profiles FOR UPDATE TO authenticated USING (public.is_super_admin());
 
--- Products: Admins read; only super_admin modifies products/prices
+-- Products: Admins read; admins and super_admin modify products
 CREATE POLICY "Allow authenticated read products" ON public.products FOR SELECT TO authenticated USING (TRUE);
-CREATE POLICY "Allow super_admin manage products" ON public.products FOR ALL TO authenticated USING (public.is_super_admin());
+CREATE POLICY "Allow admins manage products" ON public.products FOR ALL TO authenticated USING (public.is_admin() OR public.is_super_admin());
 
 -- Daily Sessions:
 -- Admins can read sessions

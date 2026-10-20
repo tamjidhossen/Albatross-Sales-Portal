@@ -28,6 +28,8 @@ import {
   getTodayDateString, 
   fetchAllDaysData, 
   fetchProducts, 
+  createProductInDB,
+  archiveProductInDB,
   fetchAuditLogs, 
   startShiftSession, 
   persistSession, 
@@ -188,12 +190,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
   // Start Shift for Today / Selected Date
   const handleStartShift = async (openingCash: number = 1000) => {
-    let prods = await fetchProducts();
-    if (!prods || prods.length === 0) {
-      prods = INITIAL_PRODUCTS;
-    }
+    const prods = await fetchProducts();
     const started = await startShiftSession(selectedDate, openingCash, prods);
-    const newDay = started || createDefaultSessionForDate(selectedDate, 0, openingCash);
+    const newDay = started || createDefaultSessionForDate(selectedDate, 0, openingCash, prods);
     setAllDays((prev) => ({
       ...prev,
       [selectedDate]: newDay,
@@ -269,15 +268,32 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, morningNewPrepared, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated morning production`);
   };
 
-  // Add New Product to Menu & Session
-  const handleAddProduct = (name: string, price: number, prepared: number) => {
+  // Add New Product to Menu & Session (Persisted to Master Catalog for All Future Days)
+  const handleAddProduct = async (name: string, price: number, prepared: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
-    const newId = `prod-${Date.now()}`;
+    const cleanName = name.trim();
+    const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const newId = `prod-${slug || Date.now()}`;
+
+    const newProduct: Product = {
+      id: newId,
+      name: cleanName,
+      bengaliName: cleanName,
+      defaultPrice: price,
+      isActive: true,
+      canCarryover: true,
+      sortOrder: 99,
+    };
+
+    // 1. Persist to master products table in Supabase (so it persists for all future dates)
+    await createProductInDB(newProduct);
+
+    // 2. Add to today's active session
     const newItem: DailyInventoryItem = {
-      id: `inv-${Date.now()}`,
+      id: `inv-${selectedDate}-${newId}`,
       sessionDate: selectedDate,
       productId: newId,
-      productName: name,
+      productName: cleanName,
       unitPrice: price,
       morningCarriedOver: 0,
       morningNewPrepared: prepared,
@@ -288,20 +304,29 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       quantitySold: 0,
       estimatedRevenue: 0,
     };
+
     const next = [...inventoryItems, newItem];
     recalculateSession(next, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('product', newId, 'INSERT', 'name', null, name, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Added product ${name} @ ৳${price}`);
+    logAudit('product', newId, 'INSERT', 'name', null, cleanName, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Added product ${cleanName} @ ৳${price}`);
   };
 
-  // Delete Product from Daily Inventory
-  const handleDeleteMorningItem = (productId: string) => {
+  // Delete Product from Daily Inventory & Archive from Future Menus
+  const handleDeleteMorningItem = async (productId: string) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const target = inventoryItems.find((item) => item.productId === productId);
     if (!target) return;
-    deleteInventoryItemFromDB(selectedDate, productId);
+
+    // 1. Delete from current day's daily_inventory in Supabase
+    await deleteInventoryItemFromDB(selectedDate, productId);
+
+    // 2. Archive from master products catalog so it NEVER appears in future shifts,
+    // while keeping past daily_inventory records & range summaries 100% intact!
+    await archiveProductInDB(productId);
+
+    // 3. Remove from current session state and recalculate
     const updated = inventoryItems.filter((item) => item.productId !== productId);
     recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('inventory', productId, 'DELETE', 'productId', productId, null, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Removed product ${target.productName} from day session`);
+    logAudit('product', productId, 'DELETE', 'isActive', 'active', 'archived', `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Archived product ${target.productName} from menu`);
   };
 
   // Night Stock Count Handler (Simplified: Sold & Waste)

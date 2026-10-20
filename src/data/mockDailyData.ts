@@ -32,7 +32,12 @@ export interface DayData {
   payouts: DailyPayout[];
 }
 
-export const createDefaultSessionForDate = (dateStr: string, openingReserve: number = 0, openingCash: number = 1000): DayData => {
+export const createDefaultSessionForDate = (
+  dateStr: string, 
+  openingReserve: number = 0, 
+  openingCash: number = 1000,
+  products: Product[] = INITIAL_PRODUCTS
+): DayData => {
   return {
     session: {
       sessionDate: dateStr,
@@ -57,7 +62,7 @@ export const createDefaultSessionForDate = (dateStr: string, openingReserve: num
       closingSavedCash: openingReserve,
       notes: '',
     },
-    items: INITIAL_PRODUCTS.map((prod) => ({
+    items: (products.length > 0 ? products : INITIAL_PRODUCTS).map((prod) => ({
       id: `inv-${dateStr}-${prod.id}`,
       sessionDate: dateStr,
       productId: prod.id,
