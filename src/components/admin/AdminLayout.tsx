@@ -1,0 +1,621 @@
+import React, { useState } from 'react';
+import { 
+  DailySession, 
+  DailyInventoryItem, 
+  DailyExpense, 
+  DailyPayout, 
+  AuditLog, 
+  Role,
+  Product
+} from '../../types';
+import { 
+  INITIAL_AUDIT_LOGS,
+  HISTORICAL_DAYS,
+  DayData,
+  createDefaultSessionForDate
+} from '../../data/mockDailyData';
+import { DailyDashboardOverview } from './DailyDashboardOverview';
+import { MorningStockSection } from './MorningStockSection';
+import { NightClosingSection } from './NightClosingSection';
+import { ExpensesSection } from './ExpensesSection';
+import { CashSettlementSection } from './CashSettlementSection';
+import { AdminLogin } from './AdminLogin';
+import { StaffAccountsModal } from './StaffAccountsModal';
+import { getTodayDateString } from '../../services/dailyOperationsService';
+import { useAuth, AuthProvider } from '../../contexts/AuthContext';
+import { 
+  ArrowLeft, 
+  Shield, 
+  LogOut, 
+  LayoutGrid, 
+  Sun, 
+  Moon, 
+  Receipt, 
+  Wallet,
+  History,
+  Store,
+  Users
+} from 'lucide-react';
+
+interface AdminLayoutProps {
+  onBackToLanding: () => void;
+}
+
+const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
+  const { user, profile, signOut, setDemoUser, isConfigured } = useAuth();
+
+  // Navigation tab
+  const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>('overview');
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  
+  // Multi-day sessions dictionary and date selection
+  const [allDays, setAllDays] = useState<Record<string, DayData>>(HISTORICAL_DAYS);
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+
+  // Active day data for currently selected date (or null if cart not operated)
+  const activeDay = allDays[selectedDate] || null;
+  const session = activeDay?.session || null;
+  const inventoryItems = activeDay?.items || [];
+  const expenses = activeDay?.expenses || [];
+  const payouts = activeDay?.payouts || [];
+
+  // If user is not authenticated, show Admin Login
+  if (!user) {
+    return <AdminLogin onBackToLanding={onBackToLanding} />;
+  }
+
+  const userRole: Role = profile?.role || 'admin';
+  const isSuperAdmin = userRole === 'super_admin';
+
+  // Helper: Append Audit Log
+  const logAudit = (
+    entityType: AuditLog['entityType'],
+    recordId: string,
+    action: AuditLog['action'],
+    changedField?: string,
+    oldValue?: string | number | null,
+    newValue?: string | number | null,
+    reason?: string
+  ) => {
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      recordId,
+      entityType,
+      action,
+      changedField,
+      oldValue,
+      newValue,
+      changedByName: profile?.full_name || user.email?.split('@')[0] || 'Staff Member',
+      changedByRole: userRole,
+      reason,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Helper: Mutate the current active day
+  const updateCurrentDay = (updater: (prevDay: DayData) => DayData) => {
+    setAllDays((prevAll) => {
+      const cur = prevAll[selectedDate];
+      if (!cur) return prevAll;
+      return {
+        ...prevAll,
+        [selectedDate]: updater(cur),
+      };
+    });
+  };
+
+  // Open Cart For a Date where cart was not operated
+  const handleOpenCartForDate = (dateStr: string) => {
+    const newDay = createDefaultSessionForDate(dateStr);
+    setAllDays((prev) => ({
+      ...prev,
+      [dateStr]: newDay,
+    }));
+    setSelectedDate(dateStr);
+    logAudit('session', dateStr, 'INSERT', 'status', null, 'open', `Opened new shift session for ${dateStr}`);
+  };
+
+  // Recalculate Session Totals Helper
+  const recalculateSession = (
+    nextInventory: DailyInventoryItem[],
+    nextExpenses: DailyExpense[],
+    nextPayouts: DailyPayout[],
+    discounts: number,
+    actualCash: number
+  ) => {
+    updateCurrentDay((cur) => {
+      const totalPrepared = nextInventory.reduce((sum, i) => sum + i.totalAvailable, 0);
+      const totalSold = nextInventory.reduce((sum, i) => sum + i.quantitySold, 0);
+      const totalWasted = nextInventory.reduce((sum, i) => sum + i.closingWasted, 0);
+      const grossRevenue = nextInventory.reduce((sum, i) => sum + i.estimatedRevenue, 0);
+      const netRevenue = Math.max(0, grossRevenue - discounts);
+      const totalExp = nextExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalPay = nextPayouts.reduce((sum, p) => sum + p.amount, 0);
+      const expected = cur.session.openingCash + netRevenue - totalExp - totalPay;
+      const diff = actualCash - expected;
+
+      return {
+        ...cur,
+        items: nextInventory,
+        expenses: nextExpenses,
+        payouts: nextPayouts,
+        session: {
+          ...cur.session,
+          totalProductsPrepared: totalPrepared,
+          totalProductsSold: totalSold,
+          totalProductsWasted: totalWasted,
+          grossEstimatedRevenue: grossRevenue,
+          estimatedDiscounts: discounts,
+          netEstimatedRevenue: netRevenue,
+          totalExpenses: totalExp,
+          totalPayouts: totalPay,
+          expectedClosingCash: expected,
+          actualCashCounted: actualCash,
+          cashDifference: diff,
+        },
+      };
+    });
+  };
+
+  // Morning Stock Update Handler
+  const handleUpdateMorningItem = (productId: string, morningNewPrepared: number) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const updated = inventoryItems.map((item) => {
+      if (item.productId === productId) {
+        const totalAvail = item.morningCarriedOver + morningNewPrepared;
+        const sold = Math.max(0, totalAvail - item.closingUsableLeftover - item.closingWasted);
+        return {
+          ...item,
+          morningNewPrepared,
+          totalAvailable: totalAvail,
+          quantitySold: sold,
+          estimatedRevenue: sold * item.unitPrice,
+        };
+      }
+      return item;
+    });
+
+    recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, morningNewPrepared, 'Updated morning production');
+  };
+
+  // Add New Product to Menu & Session
+  const handleAddProduct = (name: string, price: number, prepared: number) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const newId = `prod-${Date.now()}`;
+    const newItem: DailyInventoryItem = {
+      id: `inv-${Date.now()}`,
+      sessionDate: selectedDate,
+      productId: newId,
+      productName: name,
+      unitPrice: price,
+      morningCarriedOver: 0,
+      morningNewPrepared: prepared,
+      totalAvailable: prepared,
+      closingCounted: 0,
+      closingUsableLeftover: 0,
+      closingWasted: 0,
+      quantitySold: 0,
+      estimatedRevenue: 0,
+    };
+    const next = [...inventoryItems, newItem];
+    recalculateSession(next, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('product', newId, 'INSERT', 'name', null, name, `Added product ${name} @ ৳${price}`);
+  };
+
+  // Night Stock Count Handler (Simplified: Sold & Waste)
+  const handleUpdateNightCount = (
+    productId: string,
+    sold: number,
+    waste: number
+  ) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const updated = inventoryItems.map((item) => {
+      if (item.productId === productId) {
+        const reusable = Math.max(0, item.totalAvailable - sold - waste);
+        return {
+          ...item,
+          closingUsableLeftover: reusable,
+          closingWasted: waste,
+          closingCounted: reusable + waste,
+          quantitySold: sold,
+          estimatedRevenue: sold * item.unitPrice,
+        };
+      }
+      return item;
+    });
+
+    recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('inventory', productId, 'UPDATE', 'nightCount', undefined, `${sold} sold, ${waste} waste`, 'Updated closing counts');
+  };
+
+  // Discounts Update
+  const handleUpdateDiscounts = (discounts: number) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    updateCurrentDay((cur) => ({
+      ...cur,
+      session: { ...cur.session, estimatedDiscounts: discounts },
+    }));
+    recalculateSession(inventoryItems, expenses, payouts, discounts, activeDay.session.actualCashCounted);
+    logAudit('session', selectedDate, 'UPDATE', 'estimatedDiscounts', activeDay.session.estimatedDiscounts, discounts, 'Updated estimated discounts');
+  };
+
+  // Expense Handlers
+  const handleAddExpense = (newExp: Omit<DailyExpense, 'id' | 'createdAt'>) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const created: DailyExpense = {
+      ...newExp,
+      id: `exp-${Date.now()}`,
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    const updated = [created, ...expenses];
+    recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('expense', created.id, 'INSERT', 'amount', null, newExp.amount, `Added expense for ${newExp.itemName}`);
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const target = expenses.find((e) => e.id === id);
+    if (!target) return;
+    const updated = expenses.filter((e) => e.id !== id);
+    recalculateSession(inventoryItems, updated, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('expense', id, 'DELETE', 'amount', target.amount, null, `Deleted expense: ${target.itemName}`);
+  };
+
+  // Payout Handlers
+  const handleAddPayout = (newPayout: Omit<DailyPayout, 'id' | 'createdAt'>) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const created: DailyPayout = {
+      ...newPayout,
+      id: `pay-${Date.now()}`,
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    const updated = [created, ...payouts];
+    recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('payout', created.id, 'INSERT', 'amount', null, newPayout.amount, `Paid ${newPayout.recipientName} ৳${newPayout.amount}`);
+  };
+
+  const handleDeletePayout = (id: string) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    const target = payouts.find((p) => p.id === id);
+    if (!target) return;
+    const updated = payouts.filter((p) => p.id !== id);
+    recalculateSession(inventoryItems, expenses, updated, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
+    logAudit('payout', id, 'DELETE', 'amount', target.amount, null, `Removed payout to ${target.recipientName}`);
+  };
+
+  // Khuchra Cash Handler
+  const handleUpdateKhuchra = (khuchra: number) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    updateCurrentDay((cur) => {
+      const exp = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
+      return {
+        ...cur,
+        session: {
+          ...cur.session,
+          openingCash: khuchra,
+          khuchraTakenFromReserve: khuchra,
+          expectedClosingCash: exp,
+          cashDifference: cur.session.actualCashCounted - exp,
+        },
+      };
+    });
+    logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, 'Adjusted morning khuchra cash');
+  };
+
+  // Save Drawer Cash to Reserve Handler
+  const handleSaveDrawerCash = (countedDrawerCash: number) => {
+    if (!activeDay || activeDay.session.isLocked) return;
+    updateCurrentDay((cur) => {
+      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
+      const netCashGenerated = countedDrawerCash - khuchra;
+      const nextReserve = cur.session.openingSavedCash + netCashGenerated;
+      const diff = countedDrawerCash - cur.session.expectedClosingCash;
+      return {
+        ...cur,
+        session: {
+          ...cur.session,
+          actualCashCounted: countedDrawerCash,
+          cashDifference: diff,
+          closingSavedCash: nextReserve,
+          transferredToReserve: countedDrawerCash,
+        },
+      };
+    });
+    logAudit('session', selectedDate, 'UPDATE', 'closingDrawerCash', activeDay.session.actualCashCounted, countedDrawerCash, `Saved closing drawer cash: ৳${countedDrawerCash}`);
+  };
+
+  // Lock / Unlock Toggle
+  const handleToggleLock = () => {
+    if (!activeDay) return;
+    const nextLocked = !activeDay.session.isLocked;
+    updateCurrentDay((cur) => ({
+      ...cur,
+      session: {
+        ...cur.session,
+        isLocked: nextLocked,
+        status: nextLocked ? 'closed' : 'open',
+        closedAt: nextLocked ? new Date().toISOString() : undefined,
+      },
+    }));
+    logAudit('session', selectedDate, nextLocked ? 'LOCK' : 'UNLOCK', 'isLocked', activeDay.session.isLocked ? 'locked' : 'unlocked', nextLocked ? 'locked' : 'unlocked', `${nextLocked ? 'Locked' : 'Unlocked'} day session`);
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans selection:bg-zinc-900 selection:text-white">
+      
+      {/* Top Header (Clean, Minimal, White) */}
+      <header className="sticky top-0 z-30 bg-white/95 border-b border-zinc-200 backdrop-blur-md px-4 py-2.5 flex items-center justify-between">
+        
+        {/* Left: Back & Cart Mark */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={onBackToLanding}
+            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-600 transition active:scale-95"
+            title="Back to Landing Page"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          <div className="w-7 h-7 rounded-full bg-zinc-900 overflow-hidden shrink-0 border border-zinc-300">
+            <img src="/assets/images/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
+          </div>
+
+          <div>
+            <span className="font-bold text-sm tracking-tight text-zinc-900 block leading-none">
+              Albatross
+            </span>
+            <span className="text-[10px] text-zinc-500 font-medium block">
+              {userRole === 'super_admin' ? 'Owner / Super Admin' : 'Staff Admin'}
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Team Management, Role & Logout */}
+        <div className="flex items-center gap-1.5">
+          
+          {/* Super Admin Staff Management Button */}
+          {isSuperAdmin && (
+            <button
+              onClick={() => setIsStaffModalOpen(true)}
+              className="px-2 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
+              title="Manage Staff & Team Accounts"
+            >
+              <Users className="w-3.5 h-3.5 text-orange-600" />
+              <span>Staff</span>
+            </button>
+          )}
+
+          {/* Role Badge (Strictly derived from profile, no client switching) */}
+          <div className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 ${
+            isSuperAdmin 
+              ? 'bg-zinc-900 text-white shadow-xs' 
+              : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
+          }`}>
+            <Shield className={`w-3 h-3 ${isSuperAdmin ? 'text-orange-400' : 'text-zinc-500'}`} />
+            <span>{isSuperAdmin ? 'Owner' : 'Staff'}</span>
+          </div>
+
+          {/* Logout button */}
+          <button
+            onClick={() => signOut()}
+            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-zinc-500 hover:text-red-600 transition"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+
+      </header>
+
+      {/* Main Content Area (Mobile Viewport) */}
+      <main className="flex-1 max-w-md mx-auto w-full px-4 py-4 pb-24">
+        
+        {activeTab === 'overview' && (
+          <DailyDashboardOverview
+            session={session}
+            items={inventoryItems}
+            expenses={expenses}
+            payouts={payouts}
+            selectedDate={selectedDate}
+            onSelectDate={(date) => setSelectedDate(date)}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onToggleLock={handleToggleLock}
+            isSuperAdmin={isSuperAdmin}
+            allSessionsData={allDays}
+          />
+        )}
+
+        {/* If cart was not operated on this date and user visits an operational tab */}
+        {!session && activeTab !== 'overview' && activeTab !== 'audit' && (
+          <div className="bg-white rounded-2xl p-6 border border-zinc-200 text-center space-y-3 shadow-xs font-sans">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+              <Store className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm text-zinc-900">
+                Food Cart Closed
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                The food cart was not opened on {selectedDate}. No inventory, expenses, or cash drawer records exist for this day.
+              </p>
+            </div>
+            <div className="pt-2 flex justify-center">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="px-4 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
+              >
+                Back to Overview
+              </button>
+            </div>
+          </div>
+        )}
+
+        {session && activeTab === 'opening' && (
+          <MorningStockSection
+            items={inventoryItems}
+            onUpdateItem={handleUpdateMorningItem}
+            onAddProduct={handleAddProduct}
+            onBack={() => setActiveTab('overview')}
+            isLocked={session.isLocked}
+          />
+        )}
+
+        {session && activeTab === 'closing' && (
+          <NightClosingSection
+            items={inventoryItems}
+            estimatedDiscounts={session.estimatedDiscounts}
+            onUpdateNightCount={handleUpdateNightCount}
+            onUpdateDiscounts={handleUpdateDiscounts}
+            onBack={() => setActiveTab('overview')}
+            isLocked={session.isLocked}
+          />
+        )}
+
+        {session && activeTab === 'expenses' && (
+          <ExpensesSection
+            expenses={expenses}
+            onAddExpense={handleAddExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onBack={() => setActiveTab('overview')}
+            isLocked={session.isLocked}
+          />
+        )}
+
+        {session && activeTab === 'cash' && (
+          <CashSettlementSection
+            session={session}
+            items={inventoryItems}
+            expenses={expenses}
+            payouts={payouts}
+            onAddPayout={handleAddPayout}
+            onDeletePayout={handleDeletePayout}
+            onUpdateKhuchra={handleUpdateKhuchra}
+            onSaveDrawerCash={handleSaveDrawerCash}
+            onToggleLock={handleToggleLock}
+            onBack={() => setActiveTab('overview')}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
+
+        {activeTab === 'audit' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
+              <span className="font-bold text-sm text-zinc-900">
+                Audit Trail (Change History)
+              </span>
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="text-xs text-zinc-500 hover:text-zinc-900 font-medium"
+              >
+                Done
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="bg-white rounded-xl p-3 border border-zinc-200 text-xs shadow-sm">
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">
+                    <span className="font-semibold text-zinc-700">{log.action} • {log.entityType}</span>
+                    <span>{log.createdAt}</span>
+                  </div>
+                  <div className="font-medium text-zinc-900">{log.reason || 'Record updated'}</div>
+                  <div className="text-[11px] text-zinc-500 mt-1">
+                    By: <strong className="text-zinc-800">{log.changedByName}</strong> ({log.changedByRole})
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </main>
+
+      {/* Mobile Bottom Navigation Bar (Minimal, Clean White) */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 border-t border-zinc-200 backdrop-blur-md px-2 py-1.5 flex items-center justify-around shadow-sm">
+        
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
+            activeTab === 'overview' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Overview</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('opening')}
+          className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
+            activeTab === 'opening' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+        >
+          <Sun className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Opening</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('closing')}
+          className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
+            activeTab === 'closing' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+        >
+          <Moon className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Closing</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
+            activeTab === 'expenses' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+        >
+          <Receipt className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Expenses</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('cash')}
+          className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
+            activeTab === 'cash' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Cash</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('audit')}
+          className={`flex flex-col items-center py-1 px-2.5 rounded-lg transition ${
+            activeTab === 'audit' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+          }`}
+          title="Audit Trail"
+        >
+          <History className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">Audit</span>
+        </button>
+
+      </nav>
+
+      {/* Staff Accounts Management Modal (Super Admin only) */}
+      {isSuperAdmin && (
+        <StaffAccountsModal
+          isOpen={isStaffModalOpen}
+          onClose={() => setIsStaffModalOpen(false)}
+          currentUserEmail={user.email || ''}
+        />
+      )}
+
+    </div>
+  );
+};
+
+export const AdminLayout: React.FC<AdminLayoutProps> = (props) => {
+  return (
+    <AuthProvider>
+      <AdminLayoutInner {...props} />
+    </AuthProvider>
+  );
+};

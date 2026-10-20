@@ -1,0 +1,65 @@
+name: Supabase Free Automated Daily Backup
+
+on:
+  schedule:
+    # Runs everyday at 21:00 UTC (03:00 AM Bangladesh Standard Time)
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create Backup Directory
+        run: |
+          DATE_STR=$(date +'%Y-%m-%d_%H%M%S')
+          echo "BACKUP_DIR=backups/$DATE_STR" >> $GITHUB_ENV
+          mkdir -p backups/$DATE_STR
+
+      - name: Export Supabase Tables via REST API
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Exporting sales data..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/sales?select=*" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/sales.json
+
+          echo "Exporting inventory records..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/inventory?select=*" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/inventory.json
+
+          echo "Exporting bazaar expenses..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/bazaar_expenses?select=*" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/bazaar_expenses.json
+
+          echo "Exporting audit history trail..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/audit_logs?select=*" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/audit_logs.json
+
+          echo "Exporting categories..."
+          curl -s -X GET "${SUPABASE_URL}/rest/v1/dynamic_categories?select=*" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" > $BACKUP_DIR/dynamic_categories.json
+
+          echo "Backup files generated:"
+          ls -lh $BACKUP_DIR
+
+      - name: Commit and Push to Private Backup Branch
+        run: |
+          git config --global user.name "Albatross DB Backup Bot"
+          git config --global user.email "backup-bot@albatrossflavor.com"
+          
+          # Stash or commit snapshot to backups branch
+          git checkout -b backups 2>/dev/null || git checkout backups
+          git add backups/
+          git commit -m "Automated DB Backup - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push origin backups || echo "Push skipped if remote branch not yet configured"
+
