@@ -12,7 +12,7 @@ export function downloadDailySummaryImage(
   // Calculate dynamic height based on product count
   const itemRowHeight = 28;
   const itemsSectionHeight = Math.max(100, items.length * itemRowHeight + 50);
-  const totalHeight = 710 + itemsSectionHeight;
+  const totalHeight = 730 + itemsSectionHeight;
 
   const canvas = document.createElement('canvas');
   canvas.width = width * scale;
@@ -160,24 +160,27 @@ export function downloadDailySummaryImage(
   y += 24;
 
   // SUMMARY TOTALS ROW
+  const totalStockVal = items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
   ctx.fillStyle = '#F8FAFC';
   ctx.strokeStyle = '#CBD5E1';
   ctx.beginPath();
-  ctx.roundRect(20, y, width - 40, 50, 8);
+  ctx.roundRect(20, y, width - 40, 68, 8);
   ctx.fill();
   ctx.stroke();
 
   ctx.fillStyle = '#334155';
   ctx.font = '11px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`Total Items Prepared: ${session.totalProductsPrepared} pcs`, 36, y + 22);
+  ctx.fillText(`Total Items Prepared: ${session.totalProductsPrepared} pcs`, 36, y + 20);
   ctx.fillText(`Total Items Sold: ${session.totalProductsSold} pcs`, 36, y + 38);
+  ctx.fillText(`Total Stock Value: ৳${totalStockVal.toLocaleString()}`, 36, y + 56);
 
   ctx.textAlign = 'right';
-  ctx.fillText(`Gross Food Sales: ৳${session.grossEstimatedRevenue.toLocaleString()}`, width - 36, y + 22);
+  ctx.fillText(`Gross Food Sales: ৳${session.grossEstimatedRevenue.toLocaleString()}`, width - 36, y + 20);
   ctx.fillText(`Discounts Given: −৳${session.estimatedDiscounts.toLocaleString()}`, width - 36, y + 38);
+  ctx.fillText(`Net Food Revenue: ৳${session.netEstimatedRevenue.toLocaleString()}`, width - 36, y + 56);
   ctx.textAlign = 'left';
 
-  y += 75;
+  y += 90;
 
   // FOOTER
   ctx.fillStyle = '#94A3B8';

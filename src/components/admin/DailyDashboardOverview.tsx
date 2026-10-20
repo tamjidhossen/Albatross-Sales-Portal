@@ -144,6 +144,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
     let totalPrepared = 0;
     let totalSold = 0;
     let totalWaste = 0;
+    let totalStockValue = 0;
 
     const productMap: Record<string, { name: string; unitPrice: number; sold: number; wasted: number; revenue: number }> = {};
     const expenseCategoryMap: Record<string, number> = {};
@@ -165,6 +166,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         totalPrepared += day.items.reduce((sum, item) => sum + item.totalAvailable, 0);
         totalSold += day.items.reduce((sum, item) => sum + item.quantitySold, 0);
         totalWaste += day.items.reduce((sum, item) => sum + item.closingWasted, 0);
+        totalStockValue += day.items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
 
         // Products
         day.items.forEach((item) => {
@@ -190,56 +192,30 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
           payoutMap[key].amount += p.amount;
         });
       });
-
-      // If simulated multi-day range exceeds the available historical sessions count, scale proportionally
-      if (days > rangeSessions.length && rangeSessions.length > 0) {
-        const factor = days / rangeSessions.length;
-        grossSales = Math.round(grossSales * factor);
-        discounts = Math.round(discounts * factor);
-        netSales = Math.round(netSales * factor);
-        totalExp = Math.round(totalExp * factor);
-        totalPay = Math.round(totalPay * factor);
-        totalPrepared = Math.round(totalPrepared * factor);
-        totalSold = Math.round(totalSold * factor);
-        totalWaste = Math.round(totalWaste * factor);
-
-        Object.keys(productMap).forEach((id) => {
-          productMap[id].sold = Math.round(productMap[id].sold * factor);
-          productMap[id].wasted = Math.round(productMap[id].wasted * factor);
-          productMap[id].revenue = Math.round(productMap[id].revenue * factor);
-        });
-
-        Object.keys(expenseCategoryMap).forEach((cat) => {
-          expenseCategoryMap[cat] = Math.round(expenseCategoryMap[cat] * factor);
-        });
-
-        Object.keys(payoutMap).forEach((k) => {
-          payoutMap[k].amount = Math.round(payoutMap[k].amount * factor);
-        });
-      }
-    } else if (session) {
-      const activeGross = items.reduce((sum, item) => sum + item.estimatedRevenue, 0);
-      grossSales = activeGross * days;
-      discounts = (session.estimatedDiscounts || 0) * days;
+    } else if (session && selectedDate >= calcStartDate && selectedDate <= calcEndDate) {
+      // Single active session in range (pure actual counts, no artificial multipliers)
+      grossSales = items.reduce((sum, item) => sum + item.estimatedRevenue, 0);
+      discounts = session.estimatedDiscounts || 0;
       netSales = Math.max(0, grossSales - discounts);
-      totalExp = expenses.reduce((sum, e) => sum + e.amount, 0) * days;
-      totalPay = payouts.reduce((sum, p) => sum + p.amount, 0) * days;
-      totalPrepared = items.reduce((sum, item) => sum + item.totalAvailable, 0) * days;
-      totalSold = items.reduce((sum, item) => sum + item.quantitySold, 0) * days;
-      totalWaste = items.reduce((sum, item) => sum + item.closingWasted, 0) * days;
+      totalExp = expenses.reduce((sum, e) => sum + e.amount, 0);
+      totalPay = payouts.reduce((sum, p) => sum + p.amount, 0);
+      totalPrepared = items.reduce((sum, item) => sum + item.totalAvailable, 0);
+      totalSold = items.reduce((sum, item) => sum + item.quantitySold, 0);
+      totalWaste = items.reduce((sum, item) => sum + item.closingWasted, 0);
+      totalStockValue = items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
 
       items.forEach((item) => {
         productMap[item.productId] = {
           name: item.productName,
           unitPrice: item.unitPrice,
-          sold: item.quantitySold * days,
-          wasted: item.closingWasted * days,
-          revenue: item.estimatedRevenue * days,
+          sold: item.quantitySold,
+          wasted: item.closingWasted,
+          revenue: item.estimatedRevenue,
         };
       });
 
       expenses.forEach((exp) => {
-        expenseCategoryMap[exp.category] = (expenseCategoryMap[exp.category] || 0) + (exp.amount * days);
+        expenseCategoryMap[exp.category] = (expenseCategoryMap[exp.category] || 0) + exp.amount;
       });
 
       payouts.forEach((p) => {
@@ -247,7 +223,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         payoutMap[key] = {
           recipientName: p.recipientName,
           payoutType: p.payoutType,
-          amount: p.amount * days,
+          amount: p.amount,
         };
       });
     }
@@ -296,6 +272,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
       totalPrepared,
       totalSold,
       totalWaste,
+      totalStockValue,
       closingReserve,
       products,
       expenseCategories,
@@ -333,6 +310,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         totalPrepared: analyticsData.totalPrepared,
         totalSold: analyticsData.totalSold,
         totalWaste: analyticsData.totalWaste,
+        totalStockValue: analyticsData.totalStockValue,
         closingReserve: analyticsData.closingReserve,
         products: analyticsData.products,
         expenseCategories: analyticsData.expenseCategories,

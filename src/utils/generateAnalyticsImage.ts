@@ -17,6 +17,7 @@ export interface AnalyticsReportData {
   totalPrepared: number;
   totalSold: number;
   totalWaste: number; // Count of wasted items
+  totalStockValue?: number; // Total Stock Value loaded for the period
   // Closing Cash Reserve for the latest date in range
   closingReserve: number;
   // Product breakdown
@@ -53,7 +54,7 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   const payoutRowHeight = 22;
 
   // Dynamic height calculation
-  const metricsBoxHeight = data.days > 1 ? 124 : 98;
+  const metricsBoxHeight = data.days > 1 ? 144 : 118;
   const prodTableHeight = 44 + Math.max(1, data.products.length) * productRowHeight + 26;
   const expTableHeight = 44 + Math.max(1, data.expenseCategories.length) * expenseRowHeight + 24;
   const payTableHeight = 44 + Math.max(1, data.payouts.length) * payoutRowHeight + 24;
@@ -188,16 +189,20 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   // Row 1: Gross Sales & Discounts Given
   drawMetricPair('Gross Food Sales:', `৳${data.grossSales.toLocaleString()}`, 'Discounts Given:', `−৳${data.discounts.toLocaleString()}`, rowY, '#0F172A', '#D97706');
 
-  // Row 2: Total Items Prepared & Items Sold
+  // Row 2: Total Stock Value & Total Items Prepared
   rowY += 22;
-  drawMetricPair('Total Items Prepared:', `${data.totalPrepared} pcs`, 'Total Items Sold:', `${data.totalSold} pcs`, rowY, '#0F172A', '#059669');
+  drawMetricPair('Total Stock Value:', `৳${(data.totalStockValue || 0).toLocaleString()}`, 'Total Items Prepared:', `${data.totalPrepared} pcs`, rowY, '#EA4300', '#0F172A');
 
-  // Row 3: Items Wasted (Separate line as requested, count only) & Closing Cash Reserve (for last day)
+  // Row 3: Items Sold & Items Wasted
+  rowY += 22;
+  drawMetricPair('Total Items Sold:', `${data.totalSold} pcs`, 'Total Items Wasted:', `${data.totalWaste} pcs`, rowY, '#059669', '#DC2626');
+
+  // Row 4: Closing Cash Reserve (for last day)
   rowY += 22;
   const reserveLabel = data.days > 1 ? `Closing Cash Reserve (${data.endDate}):` : 'Cash Reserve:';
-  drawMetricPair('Total Items Wasted:', `${data.totalWaste} pcs`, reserveLabel, `৳${data.closingReserve.toLocaleString()}`, rowY, '#DC2626', '#EA4300');
+  drawMetricPair(reserveLabel, `৳${data.closingReserve.toLocaleString()}`, '', '', rowY, '#EA4300');
 
-  // Row 4: Average Daily Sales & Profit (Kept ONLY for multi-day range)
+  // Row 5: Average Daily Sales & Profit (Kept ONLY for multi-day range)
   if (data.days > 1) {
     rowY += 22;
     drawMetricPair('Avg Daily Net Sales:', `৳${data.avgDailySales.toLocaleString()}/day`, 'Avg Daily Profit:', `৳${data.avgDailyProfit.toLocaleString()}/day`, rowY, '#0F172A', '#059669');

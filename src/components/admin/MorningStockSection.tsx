@@ -182,7 +182,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
             <span className="text-sm font-black text-zinc-900 block mt-0.5">{totalAvailable}</span>
           </div>
           <div>
-            <span className="text-[10px] font-bold text-orange-600 block">Food Value</span>
+            <span className="text-[10px] font-bold text-orange-600 block">Stock Value</span>
             <span className="text-sm font-black text-orange-600 block mt-0.5">৳{totalStockValue.toLocaleString()}</span>
           </div>
         </div>
