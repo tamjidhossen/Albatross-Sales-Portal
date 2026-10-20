@@ -471,38 +471,27 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
           </div>
           <div>
             <h3 className="font-bold text-sm text-zinc-900">
-              {isViewingToday ? "Food Cart Not Started Today" : "Food Cart Closed"}
+              {selectedDate >= todayStr ? "Food Cart Not Started Yet" : "Food Cart Closed"}
             </h3>
             <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-              {isViewingToday 
-                ? "Start today's shift to begin recording morning stock, sales, expenses, and cash drawer counts."
+              {selectedDate >= todayStr 
+                ? `Start shift for ${formattedDate} to begin recording morning stock, sales, expenses, and cash drawer counts.`
                 : `No business operations were recorded for ${formattedDate}.`}
             </p>
           </div>
 
-          {isViewingToday ? (
-            <div className="pt-1 flex justify-center">
+          <div className="pt-1 flex flex-col sm:flex-row items-center justify-center gap-2">
+            {(selectedDate >= todayStr || isSuperAdmin) && (
               <button
                 type="button"
                 onClick={() => setIsStartModalOpen(true)}
-                className="w-full max-w-xs py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
               >
                 <Sun className="w-4 h-4 text-white" />
-                <span>Start Today's Shift</span>
+                <span>Start Shift for {formattedDate}</span>
               </button>
-            </div>
-          ) : (
-            <div className="pt-1 flex flex-col sm:flex-row items-center justify-center gap-2">
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setIsStartModalOpen(true)}
-                  className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4 text-white" />
-                  <span>Add Shift Record for {formattedDate}</span>
-                </button>
-              )}
+            )}
+            {!isViewingToday && (
               <button
                 type="button"
                 onClick={() => onSelectDate(todayStr)}
@@ -510,8 +499,8 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
               >
                 Back to Today
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : (
         <>

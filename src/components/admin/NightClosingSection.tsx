@@ -121,8 +121,10 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                     max={item.totalAvailable}
                     disabled={isLocked}
                     value={item.quantitySold}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
-                      const soldVal = Math.max(0, parseInt(e.target.value, 10) || 0);
+                      const clean = e.target.value.replace(/^0+(?=\d)/, '');
+                      const soldVal = Math.max(0, parseInt(clean, 10) || 0);
                       onUpdateNightCount(item.productId, soldVal, item.closingWasted);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -140,8 +142,10 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                     max={item.totalAvailable}
                     disabled={isLocked}
                     value={item.closingWasted}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
-                      const wasteVal = Math.max(0, parseInt(e.target.value, 10) || 0);
+                      const clean = e.target.value.replace(/^0+(?=\d)/, '');
+                      const wasteVal = Math.max(0, parseInt(clean, 10) || 0);
                       onUpdateNightCount(item.productId, item.quantitySold, wasteVal);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
@@ -181,7 +185,11 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
             min="0"
             disabled={isLocked}
             value={estimatedDiscounts}
-            onChange={(e) => onUpdateDiscounts(Math.max(0, parseInt(e.target.value, 10) || 0))}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => {
+              const clean = e.target.value.replace(/^0+(?=\d)/, '');
+              onUpdateDiscounts(Math.max(0, parseInt(clean, 10) || 0));
+            }}
             placeholder="0"
             className="w-16 h-7 rounded-lg border border-zinc-300 bg-white text-center font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />

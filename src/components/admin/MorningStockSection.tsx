@@ -29,6 +29,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
   const totalPrepared = items.reduce((sum, item) => sum + item.morningNewPrepared, 0);
   const totalLeftovers = items.reduce((sum, item) => sum + item.morningCarriedOver, 0);
   const totalAvailable = items.reduce((sum, item) => sum + item.totalAvailable, 0);
+  const totalStockValue = items.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
 
   const handleAdjust = (productId: string, current: number, delta: number) => {
     if (isLocked) return;
@@ -127,7 +128,8 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                   required
                   min="1"
                   value={newProdPrice}
-                  onChange={(e) => setNewProdPrice(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setNewProdPrice(e.target.value.replace(/^0+(?=\d)/, ''))}
                   placeholder="120"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -139,7 +141,8 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                   type="number"
                   min="0"
                   value={newProdPrepared}
-                  onChange={(e) => setNewProdPrepared(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setNewProdPrepared(e.target.value.replace(/^0+(?=\d)/, ''))}
                   placeholder="20"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -167,7 +170,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
 
       {/* Aggregate Banner (Compact) */}
       <div className="bg-white rounded-xl p-2.5 border border-zinc-200 shadow-xs">
-        <div className="grid grid-cols-3 gap-1 text-center divide-x divide-zinc-100">
+        <div className="grid grid-cols-4 gap-1 text-center divide-x divide-zinc-100">
           <div>
             <span className="text-[10px] text-zinc-500 block">Leftover</span>
             <span className="text-sm font-bold text-zinc-700 block mt-0.5">+{totalLeftovers}</span>
@@ -177,8 +180,12 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
             <span className="text-sm font-bold text-zinc-900 block mt-0.5">+{totalPrepared}</span>
           </div>
           <div>
-            <span className="text-[10px] font-bold text-orange-600 block">Available</span>
-            <span className="text-base font-black text-orange-600 block mt-0.5">{totalAvailable}</span>
+            <span className="text-[10px] font-bold text-zinc-700 block">Available</span>
+            <span className="text-sm font-black text-zinc-900 block mt-0.5">{totalAvailable}</span>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-orange-600 block">Food Value</span>
+            <span className="text-sm font-black text-orange-600 block mt-0.5">৳{totalStockValue.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -274,7 +281,8 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
                   type="number"
                   disabled={isLocked}
                   value={item.morningNewPrepared}
-                  onChange={(e) => handleDirectInput(item.productId, e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => handleDirectInput(item.productId, e.target.value.replace(/^0+(?=\d)/, ''))}
                   className="w-12 h-7 rounded-md border border-zinc-300 bg-white text-center font-bold text-sm text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
 

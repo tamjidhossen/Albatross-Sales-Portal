@@ -23,7 +23,7 @@ import { CashSettlementSection } from './CashSettlementSection';
 import { AdminLogin } from './AdminLogin';
 import { StaffAccountsModal } from './StaffAccountsModal';
 import { ErrorBoundary } from '../common/ErrorBoundary';
-import { fetchStaffProfiles } from '../../lib/supabase';
+import { supabase, fetchStaffProfiles } from '../../lib/supabase';
 import { 
   getTodayDateString, 
   fetchAllDaysData, 
@@ -44,7 +44,6 @@ import {
 } from '../../services/dailyOperationsService';
 import { useAuth, AuthProvider } from '../../contexts/AuthContext';
 import { 
-  Shield, 
   LogOut, 
   LayoutGrid, 
   Sun, 
@@ -63,18 +62,48 @@ interface AdminLayoutProps {
 const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const { user, profile, isLoading, signOut, setDemoUser, isConfigured } = useAuth();
 
-  // Navigation tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>('overview');
+  // Navigation tab with sessionStorage persistence
+  const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>(() => {
+    try {
+      const saved = sessionStorage.getItem('albatross_active_tab');
+      if (saved && ['overview', 'opening', 'closing', 'expenses', 'cash', 'audit'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'overview';
+  });
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   
-  // Multi-day sessions dictionary and date selection
+  // Multi-day sessions dictionary and date selection with sessionStorage persistence
   const [allDays, setAllDays] = useState<Record<string, DayData>>(HISTORICAL_DAYS);
-  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    try {
+      const saved = sessionStorage.getItem('albatross_selected_date');
+      if (saved && /^\d{4}-\d{2}-\d{2}$/.test(saved)) {
+        return saved;
+      }
+    } catch {}
+    return getTodayDateString();
+  });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [staffProfiles, setStaffProfiles] = useState<any[]>([]);
 
-  // Load live data from Supabase on mount (All hooks MUST be called before any conditional return)
+  // Sync active tab to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('albatross_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
+
+  // Sync selected date to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('albatross_selected_date', selectedDate);
+    } catch {}
+  }, [selectedDate]);
+
+  // Load live data from Supabase on mount and listen to realtime updates
   useEffect(() => {
     let isMounted = true;
     const loadSupabaseData = async () => {
@@ -86,7 +115,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         ]);
         if (isMounted) {
           if (daysData && Object.keys(daysData).length > 0) {
-            setAllDays(daysData);
+            setAllDays((prev) => ({ ...prev, ...daysData }));
           }
           if (logs && logs.length > 0) {
             setAuditLogs(logs);
@@ -100,8 +129,50 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       }
     };
     loadSupabaseData();
+
+    // Subscribe to Supabase Realtime for instant multi-device live updates
+    const channel = supabase
+      .channel('daily_ops_realtime_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_sessions' },
+        () => {
+          loadSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_inventory' },
+        () => {
+          loadSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_expenses' },
+        () => {
+          loadSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_payouts' },
+        () => {
+          loadSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        () => {
+          loadSupabaseData();
+        }
+      )
+      .subscribe();
+
     return () => {
       isMounted = false;
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -123,6 +194,17 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     }
     return Array.from(names);
   }, [profile, staffProfiles, user]);
+
+  // Clean user display name for the top bar header (no role tags)
+  const displayName = useMemo(() => {
+    if (profile?.full_name && profile.full_name.trim()) {
+      return profile.full_name.trim();
+    }
+    if (user?.email) {
+      return user.email.split('@')[0];
+    }
+    return 'User';
+  }, [profile, user]);
 
   // Show clean spinner while Supabase authentication is restoring from localStorage
   if (isLoading) {
@@ -272,8 +354,8 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const handleAddProduct = async (name: string, price: number, prepared: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const cleanName = name.trim();
-    const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const newId = `prod-${slug || Date.now()}`;
+    const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'item';
+    const newId = `prod-${slug}-${Date.now()}`;
 
     const newProduct: Product = {
       id: newId,
@@ -496,36 +578,26 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             <span className="font-bold text-sm tracking-tight text-zinc-900 block leading-none">
               Albatross
             </span>
-            <span className="text-[10px] text-zinc-500 font-medium block">
-              {userRole === 'super_admin' ? 'Owner / Super Admin' : 'Staff Admin'}
+            <span className="text-[11px] text-zinc-500 font-medium block mt-0.5">
+              {displayName}
             </span>
           </div>
         </div>
 
-        {/* Right: Team Management, Role & Logout */}
+        {/* Right: Team Management & Logout */}
         <div className="flex items-center gap-1.5">
           
           {/* Super Admin Staff Management Button */}
           {isSuperAdmin && (
             <button
               onClick={() => setIsStaffModalOpen(true)}
-              className="px-2 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
+              className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
               title="Manage Staff & Team Accounts"
             >
               <Users className="w-3.5 h-3.5 text-orange-600" />
               <span>Staff</span>
             </button>
           )}
-
-          {/* Role Badge (Strictly derived from profile, no client switching) */}
-          <div className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 ${
-            isSuperAdmin 
-              ? 'bg-zinc-900 text-white shadow-xs' 
-              : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
-          }`}>
-            <Shield className={`w-3 h-3 ${isSuperAdmin ? 'text-orange-400' : 'text-zinc-500'}`} />
-            <span>{isSuperAdmin ? 'Owner' : 'Staff'}</span>
-          </div>
 
           {/* Logout button */}
           <button
@@ -566,11 +638,11 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             </div>
             <div>
               <h3 className="font-extrabold text-sm text-zinc-900">
-                {selectedDate === getTodayDateString() ? "Food Cart Not Started Today" : "Food Cart Closed"}
+                {selectedDate >= getTodayDateString() ? "Food Cart Not Started Yet" : "Food Cart Closed"}
               </h3>
               <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                {selectedDate === getTodayDateString()
-                  ? "Today's shift has not been started yet. Start the shift to record opening inventory and cash drawer."
+                {selectedDate >= getTodayDateString()
+                  ? "This shift has not been started yet. Start the shift to record opening inventory and cash drawer."
                   : `The food cart was not opened on ${selectedDate}. No inventory, expenses, or cash drawer records exist for this day.`}
               </p>
             </div>
@@ -581,7 +653,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
               >
                 Back to Overview
               </button>
-              {selectedDate === getTodayDateString() && (
+              {(selectedDate >= getTodayDateString() || isSuperAdmin) && (
                 <button
                   onClick={() => handleStartShift(1000)}
                   className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs active:scale-98"
@@ -677,13 +749,15 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
 
       </main>
 
-      {/* Mobile Bottom Navigation Bar (Minimal, Clean White) */}
+      {/* Mobile Bottom Navigation Bar (Minimal, Clean White with Orange Accent) */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 border-t border-zinc-200 backdrop-blur-md px-2 py-1.5 flex items-center justify-around shadow-sm">
         
         <button
           onClick={() => setActiveTab('overview')}
           className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
-            activeTab === 'overview' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'overview' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
         >
           <LayoutGrid className="w-4 h-4" />
@@ -693,7 +767,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         <button
           onClick={() => setActiveTab('opening')}
           className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
-            activeTab === 'opening' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'opening' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
         >
           <Sun className="w-4 h-4" />
@@ -703,7 +779,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         <button
           onClick={() => setActiveTab('closing')}
           className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
-            activeTab === 'closing' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'closing' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
         >
           <Moon className="w-4 h-4" />
@@ -713,7 +791,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         <button
           onClick={() => setActiveTab('expenses')}
           className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
-            activeTab === 'expenses' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'expenses' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
         >
           <Receipt className="w-4 h-4" />
@@ -723,7 +803,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         <button
           onClick={() => setActiveTab('cash')}
           className={`flex flex-col items-center py-1 px-3 rounded-lg transition ${
-            activeTab === 'cash' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'cash' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
         >
           <Wallet className="w-4 h-4" />
@@ -733,7 +815,9 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         <button
           onClick={() => setActiveTab('audit')}
           className={`flex flex-col items-center py-1 px-2.5 rounded-lg transition ${
-            activeTab === 'audit' ? 'text-zinc-900 font-bold bg-zinc-100' : 'text-zinc-400 hover:text-zinc-700'
+            activeTab === 'audit' 
+              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
           }`}
           title="Audit Trail"
         >

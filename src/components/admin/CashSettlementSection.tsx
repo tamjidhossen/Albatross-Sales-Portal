@@ -180,7 +180,8 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               min="0"
               disabled={!isEditable}
               value={khuchraInput}
-              onChange={(e) => setKhuchraInput(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setKhuchraInput(e.target.value.replace(/^0+(?=\d)/, ''))}
               onBlur={handleKhuchraBlur}
               className="w-20 h-7 rounded-lg border border-zinc-300 bg-zinc-50 text-center font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
@@ -264,39 +265,23 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                   required
                   min="1"
                   value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setPayoutAmount(e.target.value.replace(/^0+(?=\d)/, ''))}
                   placeholder="500"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Payout Type</label>
-                <div className="relative">
-                  <select
-                    value={payoutType}
-                    onChange={(e) => setPayoutType(e.target.value as any)}
-                    className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2 pr-7 text-xs font-semibold text-zinc-800 focus:outline-none focus:ring-1 focus:ring-orange-500 appearance-none shadow-2xs cursor-pointer transition"
-                  >
-                    <option value="Staff Daily Pay">Staff Daily Pay</option>
-                    <option value="Owner Withdrawal">Owner Withdrawal</option>
-                    <option value="Profit Share">Profit Share</option>
-                    <option value="Emergency Cart Expense">Emergency Cart Expense</option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Note (Optional)</label>
+                <input
+                  type="text"
+                  value={payoutNotes}
+                  onChange={(e) => setPayoutNotes(e.target.value)}
+                  placeholder="e.g. Daily shift pay..."
+                  className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">Note (Optional)</label>
-              <input
-                type="text"
-                value={payoutNotes}
-                onChange={(e) => setPayoutNotes(e.target.value)}
-                placeholder="e.g. Shift pay, emergency cart items..."
-                className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              />
             </div>
 
             <button
@@ -322,7 +307,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                 <div key={p.id} className="bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between text-xs">
                   <div>
                     <span className="font-bold text-zinc-900 block">{p.recipientName}</span>
-                    <span className="text-[10px] text-zinc-500">{p.payoutType} {p.notes && `• ${p.notes}`}</span>
+                    <span className="text-[10px] text-zinc-500">{p.notes || 'Daily Payout'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-red-600 text-xs">-৳{p.amount}</span>
@@ -409,7 +394,8 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               min="0"
               disabled={!isEditable}
               value={closingDrawerInput}
-              onChange={(e) => setClosingDrawerInput(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setClosingDrawerInput(e.target.value.replace(/^0+(?=\d)/, ''))}
               placeholder="e.g. 7950"
               className="w-full h-9 rounded-lg bg-white border border-zinc-300 text-center font-extrabold text-base text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />

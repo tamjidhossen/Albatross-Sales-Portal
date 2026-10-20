@@ -46,14 +46,15 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = parseFloat(amount);
-    if (!itemName.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
+    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
 
+    const finalItemName = itemName.trim() || category;
     const finalPayer = paidByName === 'Other Person' ? (customPayer.trim() || 'Other Person') : paidByName;
 
     onAddExpense({
       sessionDate: expenses[0]?.sessionDate || new Date().toISOString().slice(0, 10),
       category,
-      itemName: itemName.trim(),
+      itemName: finalItemName,
       amount: parsedAmount,
       paidByName: finalPayer,
       notes: notes || undefined,
@@ -150,17 +151,16 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
               </div>
             </div>
 
-            {/* Direct Item Name Input (No Presets) */}
+            {/* Direct Item Name Input (Optional) */}
             <div>
               <label className="block text-[10px] font-semibold text-zinc-600 mb-1">
-                Item Description
+                Item Description (Optional)
               </label>
               <input
                 type="text"
-                required
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
-                placeholder="e.g. Broiler chicken, Soybean oil, Foil boxes..."
+                placeholder="Optional (e.g. Broiler chicken, Soybean oil...)"
                 className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 shadow-2xs transition"
               />
             </div>
@@ -176,7 +176,8 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
                   required
                   min="1"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setAmount(e.target.value.replace(/^0+(?=\d)/, ''))}
                   placeholder="e.g. 450"
                   className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 shadow-2xs transition"
                 />
