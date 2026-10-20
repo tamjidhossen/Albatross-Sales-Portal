@@ -172,62 +172,99 @@ export const mapAuditLogToDB = (log: AuditLog) => ({
 // Live Operations API Services
 // -------------------------------------------------------------
 
+const ARCHIVED_PRODUCTS_KEY = 'albatross_archived_product_ids';
+const CUSTOM_PRODUCTS_KEY = 'albatross_custom_products';
+
+export const getArchivedProductIds = (): string[] => {
+  try {
+    const raw = localStorage.getItem(ARCHIVED_PRODUCTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const addArchivedProductId = (id: string): void => {
+  try {
+    const list = new Set(getArchivedProductIds());
+    list.add(id);
+    localStorage.setItem(ARCHIVED_PRODUCTS_KEY, JSON.stringify(Array.from(list)));
+  } catch (err) {
+    console.error('Failed to save archived product ID:', err);
+  }
+};
+
+export const removeArchivedProductId = (id: string): void => {
+  try {
+    const list = new Set(getArchivedProductIds());
+    list.delete(id);
+    localStorage.setItem(ARCHIVED_PRODUCTS_KEY, JSON.stringify(Array.from(list)));
+  } catch (err) {
+    console.error('Failed to remove archived product ID:', err);
+  }
+};
+
 /**
  * Fetch all master street menu products from database
  */
 export const fetchProducts = async (): Promise<Product[]> => {
-  if (!isSupabaseConfigured()) return INITIAL_PRODUCTS;
-  try {
-    // Check total products count in master products table
-    const { count, error: countErr } = await supabase
-      .from('products')
-      .select('*', { count: 'exact', head: true });
+  const archivedIds = new Set(getArchivedProductIds());
+  let prods: Product[] = [];
 
-    // If completely fresh table (count is 0), seed initial products once
-    if (!countErr && count === 0) {
-      const seedPayload = INITIAL_PRODUCTS.map((p) => ({
-        id: p.id,
-        name: p.name,
-        bengali_name: p.bengaliName || null,
-        default_price: p.defaultPrice,
-        is_active: true,
-        can_carryover: p.canCarryover ?? true,
-        sort_order: p.sortOrder ?? 0,
-      }));
-      await supabase.from('products').insert(seedPayload);
-    }
+  if (isSupabaseConfigured()) {
+    try {
+      // Check total products count in master products table
+      const { count, error: countErr } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true });
 
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true });
-    
-    if (error) {
-      console.warn('Failed to fetch products from Supabase, using fallback:', error);
-      return INITIAL_PRODUCTS;
-    }
-
-    if (!data || data.length === 0) {
-      // If table exists and has rows, but none are active, return empty list (user archived all)
-      if (count !== null && count > 0) {
-        return [];
+      // If completely fresh table (count is 0), seed initial products once
+      if (!countErr && count === 0) {
+        const seedPayload = INITIAL_PRODUCTS.map((p) => ({
+          id: p.id,
+          name: p.name,
+          bengali_name: p.bengaliName || null,
+          default_price: p.defaultPrice,
+          is_active: true,
+          can_carryover: p.canCarryover ?? true,
+          sort_order: p.sortOrder ?? 0,
+        }));
+        await supabase.from('products').insert(seedPayload);
       }
-      return INITIAL_PRODUCTS;
-    }
 
-    return data.map((p) => ({
-      id: p.id,
-      name: p.name,
-      bengaliName: p.bengali_name,
-      defaultPrice: Number(p.default_price),
-      isActive: p.is_active,
-      canCarryover: p.can_carryover,
-      sortOrder: p.sort_order,
-    }));
-  } catch {
-    return INITIAL_PRODUCTS;
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      
+      if (!error && data && data.length > 0) {
+        prods = data.map((p) => ({
+          id: p.id,
+          name: p.name,
+          bengaliName: p.bengali_name,
+          defaultPrice: Number(p.default_price),
+          isActive: p.is_active,
+          canCarryover: p.can_carryover,
+          sortOrder: p.sort_order,
+        }));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch products from Supabase:', err);
+    }
   }
+
+  // Fallback to INITIAL_PRODUCTS + custom products from local cache
+  if (prods.length === 0) {
+    let custom: Product[] = [];
+    try {
+      custom = JSON.parse(localStorage.getItem(CUSTOM_PRODUCTS_KEY) || '[]');
+    } catch {}
+    prods = [...INITIAL_PRODUCTS, ...custom];
+  }
+
+  // Strictly filter out any archived products
+  return prods.filter((p) => !archivedIds.has(p.id) && p.isActive !== false);
 };
 
 /**
@@ -235,9 +272,17 @@ export const fetchProducts = async (): Promise<Product[]> => {
  * Persists for all future days and shift openings
  */
 export const createProductInDB = async (product: Product): Promise<void> => {
+  removeArchivedProductId(product.id);
+  try {
+    const existing: Product[] = JSON.parse(localStorage.getItem(CUSTOM_PRODUCTS_KEY) || '[]');
+    const filtered = existing.filter((p) => p.id !== product.id);
+    filtered.push(product);
+    localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(filtered));
+  } catch {}
+
   if (!isSupabaseConfigured()) return;
   try {
-    await supabase.from('products').upsert({
+    const { error } = await supabase.from('products').upsert({
       id: product.id,
       name: product.name,
       bengali_name: product.bengaliName || null,
@@ -246,6 +291,9 @@ export const createProductInDB = async (product: Product): Promise<void> => {
       can_carryover: product.canCarryover ?? true,
       sort_order: product.sortOrder ?? 99,
     });
+    if (error) {
+      console.warn('Supabase product upsert warning:', error.message);
+    }
   } catch (err) {
     console.error('Failed to create product in DB:', err);
   }
@@ -257,12 +305,16 @@ export const createProductInDB = async (product: Product): Promise<void> => {
  * while leaving past daily_inventory records, sales history, and range summaries 100% intact.
  */
 export const archiveProductInDB = async (productId: string): Promise<void> => {
+  addArchivedProductId(productId);
   if (!isSupabaseConfigured()) return;
   try {
-    await supabase
+    const { error } = await supabase
       .from('products')
       .update({ is_active: false })
       .eq('id', productId);
+    if (error) {
+      console.warn('Supabase product archive warning:', error.message);
+    }
   } catch (err) {
     console.error('Failed to archive product in DB:', err);
   }
@@ -296,8 +348,16 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
     }
 
     if (invRes.data) {
+      const archivedIds = new Set(getArchivedProductIds());
       invRes.data.forEach((iRow) => {
         const item = mapInventoryFromDB(iRow);
+        // If this product was archived and has no sales/prep recorded for this session,
+        // do not display it so it doesn't resurrect on page refresh
+        const hasActivity = (item.morningNewPrepared > 0 || item.quantitySold > 0 || item.closingWasted > 0);
+        if (archivedIds.has(item.productId) && !hasActivity) {
+          return;
+        }
+
         if (result[item.sessionDate]) {
           result[item.sessionDate].items.push(item);
         }
@@ -527,13 +587,17 @@ export const deleteExpenseFromDB = async (expenseId: string): Promise<void> => {
 };
 
 export const deleteInventoryItemFromDB = async (sessionDate: string, productId: string): Promise<void> => {
+  addArchivedProductId(productId);
   if (!isSupabaseConfigured()) return;
   try {
-    await supabase
+    const { error } = await supabase
       .from('daily_inventory')
       .delete()
       .eq('session_date', sessionDate)
       .eq('product_id', productId);
+    if (error) {
+      console.warn('Supabase daily_inventory delete warning (may require RLS delete policy):', error.message);
+    }
   } catch (err) {
     console.error('Failed to delete inventory item:', err);
   }

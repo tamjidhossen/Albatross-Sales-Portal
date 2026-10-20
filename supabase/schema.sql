@@ -415,6 +415,13 @@ CREATE POLICY "Allow update daily_inventory" ON public.daily_inventory FOR UPDAT
         )
     )
 );
+CREATE POLICY "Allow delete daily_inventory" ON public.daily_inventory FOR DELETE TO authenticated USING (
+    public.is_super_admin() OR (
+        public.is_admin() AND EXISTS (
+            SELECT 1 FROM public.daily_sessions s WHERE s.session_date = session_date AND s.is_locked = FALSE
+        )
+    )
+);
 
 -- Daily Expenses:
 CREATE POLICY "Allow admins read daily_expenses" ON public.daily_expenses FOR SELECT TO authenticated USING (public.is_admin());
