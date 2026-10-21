@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { DailyInventoryItem } from '../../types';
-import { Plus, Minus, Sun, Check, ArrowLeft, PlusCircle, X, Trash2 } from 'lucide-react';
+import { Plus, Minus, Sun, Check, ArrowLeft, PlusCircle, X, Trash2, Download } from 'lucide-react';
+import { downloadOpeningStockSlip } from '../../utils/generateSummaryImage';
 
 interface MorningStockSectionProps {
   items: DailyInventoryItem[];
+  sessionDate?: string;
+  khuchra?: number;
   onUpdateItem: (productId: string, morningNewPrepared: number) => void;
   onAddProduct: (name: string, price: number, prepared: number) => void;
   onDeleteItem: (productId: string) => void;
@@ -13,6 +16,8 @@ interface MorningStockSectionProps {
 
 export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
   items,
+  sessionDate,
+  khuchra = 0,
   onUpdateItem,
   onAddProduct,
   onDeleteItem,
@@ -20,6 +25,7 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
   isLocked,
 }) => {
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [newProdName, setNewProdName] = useState('');
@@ -61,6 +67,21 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
     setTimeout(() => setSavedSuccess(false), 2000);
   };
 
+  const handleDownloadSlip = () => {
+    setIsDownloading(true);
+    try {
+      const activeDate = sessionDate || items[0]?.sessionDate || new Date().toISOString().slice(0, 10);
+      downloadOpeningStockSlip({
+        sessionDate: activeDate,
+        items,
+        khuchra,
+        isLocked,
+      });
+    } finally {
+      setTimeout(() => setIsDownloading(false), 800);
+    }
+  };
+
   return (
     <div className="space-y-2.5">
       
@@ -79,15 +100,28 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
           <span>Opening Stock</span>
         </span>
 
-        {!isLocked && (
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setIsAddingProduct(!isAddingProduct)}
-            className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1 transition shadow-xs active:scale-95"
+            type="button"
+            onClick={handleDownloadSlip}
+            disabled={isDownloading}
+            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-bold flex items-center gap-1 transition shadow-xs active:scale-95"
+            title="Download Opening Stock Slip (PNG)"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>Add Item</span>
+            <Download className="w-3.5 h-3.5 text-orange-600" />
+            <span className="hidden sm:inline">Slip</span>
           </button>
-        )}
+
+          {!isLocked && (
+            <button
+              onClick={() => setIsAddingProduct(!isAddingProduct)}
+              className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1 transition shadow-xs active:scale-95"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Add Item</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Inline Add Product Form */}
@@ -333,6 +367,17 @@ export const MorningStockSection: React.FC<MorningStockSectionProps> = ({
           )}
         </button>
       )}
+
+      {/* Download Slip Button */}
+      <button
+        type="button"
+        onClick={handleDownloadSlip}
+        disabled={isDownloading}
+        className="w-full bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-bold py-2 rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"
+      >
+        <Download className="w-3.5 h-3.5 text-orange-600" />
+        <span>{isDownloading ? 'Generating Opening Slip...' : 'Download Opening Slip (PNG)'}</span>
+      </button>
 
     </div>
   );

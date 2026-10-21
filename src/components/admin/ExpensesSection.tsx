@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { DailyExpense, ExpenseCategory } from '../../types';
 import { EXPENSE_CATEGORIES } from '../../data/mockDailyData';
-import { Receipt, ArrowLeft, Plus, Trash2, X, ChevronDown } from 'lucide-react';
+import { Receipt, ArrowLeft, Plus, Trash2, X, ChevronDown, Download } from 'lucide-react';
+import { downloadExpensesSlip } from '../../utils/generateSummaryImage';
 
 interface ExpensesSectionProps {
   expenses: DailyExpense[];
+  sessionDate?: string;
   onAddExpense: (expense: Omit<DailyExpense, 'id' | 'createdAt'>) => void;
   onDeleteExpense: (id: string) => void;
   onBack: () => void;
@@ -14,6 +16,7 @@ interface ExpensesSectionProps {
 
 export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   expenses,
+  sessionDate,
   onAddExpense,
   onDeleteExpense,
   onBack,
@@ -21,6 +24,7 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   staffNames = [],
 }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [category, setCategory] = useState<ExpenseCategory>('Chicken');
   const [itemName, setItemName] = useState('');
   const [amount, setAmount] = useState('');
@@ -67,6 +71,20 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
     setIsAdding(false);
   };
 
+  const handleDownloadSlip = () => {
+    setIsDownloading(true);
+    try {
+      const activeDate = sessionDate || expenses[0]?.sessionDate || new Date().toISOString().slice(0, 10);
+      downloadExpensesSlip({
+        sessionDate: activeDate,
+        expenses,
+        isLocked,
+      });
+    } finally {
+      setTimeout(() => setIsDownloading(false), 800);
+    }
+  };
+
   return (
     <div className="space-y-2.5">
       
@@ -85,15 +103,28 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
           <span>Expenses</span>
         </span>
 
-        {!isLocked && (
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setIsAdding(!isAdding)}
-            className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
+            type="button"
+            onClick={handleDownloadSlip}
+            disabled={isDownloading}
+            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
+            title="Download Expenses Slip (PNG)"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add</span>
+            <Download className="w-3.5 h-3.5 text-orange-600" />
+            <span className="hidden sm:inline">Slip</span>
           </button>
-        )}
+
+          {!isLocked && (
+            <button
+              onClick={() => setIsAdding(!isAdding)}
+              className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1 transition shadow-2xs active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Aggregate Banner (Compact) */}
@@ -311,6 +342,17 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
           })
         )}
       </div>
+
+      {/* Download Slip Button */}
+      <button
+        type="button"
+        onClick={handleDownloadSlip}
+        disabled={isDownloading}
+        className="w-full bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-bold py-2 rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"
+      >
+        <Download className="w-3.5 h-3.5 text-orange-600" />
+        <span>{isDownloading ? 'Generating Expenses Slip...' : 'Download Expenses Slip (PNG)'}</span>
+      </button>
 
     </div>
   );

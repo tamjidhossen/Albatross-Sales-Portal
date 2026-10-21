@@ -787,6 +787,8 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         {session && activeTab === 'opening' && (
           <MorningStockSection
             items={inventoryItems}
+            sessionDate={selectedDate}
+            khuchra={session.khuchraTakenFromReserve || session.openingCash}
             onUpdateItem={handleUpdateMorningItem}
             onAddProduct={handleAddProduct}
             onDeleteItem={handleDeleteMorningItem}
@@ -798,6 +800,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         {session && activeTab === 'closing' && (
           <NightClosingSection
             items={inventoryItems}
+            sessionDate={selectedDate}
             estimatedDiscounts={session.estimatedDiscounts}
             onUpdateNightCount={handleUpdateNightCount}
             onUpdateDiscounts={handleUpdateDiscounts}
@@ -809,6 +812,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         {session && activeTab === 'expenses' && (
           <ExpensesSection
             expenses={expenses}
+            sessionDate={selectedDate}
             onAddExpense={handleAddExpense}
             onDeleteExpense={handleDeleteExpense}
             onBack={() => setActiveTab('overview')}

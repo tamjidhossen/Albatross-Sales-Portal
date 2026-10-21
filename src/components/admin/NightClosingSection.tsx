@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { DailyInventoryItem } from '../../types';
-import { Moon, ArrowLeft, Check } from 'lucide-react';
+import { Moon, ArrowLeft, Check, Download } from 'lucide-react';
+import { downloadClosingStockSlip } from '../../utils/generateSummaryImage';
 
 interface NightClosingSectionProps {
   items: DailyInventoryItem[];
+  sessionDate?: string;
   estimatedDiscounts: number;
   onUpdateNightCount: (
     productId: string, 
@@ -17,6 +19,7 @@ interface NightClosingSectionProps {
 
 export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
   items,
+  sessionDate,
   estimatedDiscounts,
   onUpdateNightCount,
   onUpdateDiscounts,
@@ -24,6 +27,7 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
   isLocked,
 }) => {
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const totalSold = items.reduce((sum, item) => sum + item.quantitySold, 0);
   const grossRevenue = items.reduce((sum, item) => sum + item.estimatedRevenue, 0);
@@ -32,6 +36,21 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
   const handleSave = () => {
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
+  };
+
+  const handleDownloadSlip = () => {
+    setIsDownloading(true);
+    try {
+      const activeDate = sessionDate || items[0]?.sessionDate || new Date().toISOString().slice(0, 10);
+      downloadClosingStockSlip({
+        sessionDate: activeDate,
+        items,
+        estimatedDiscounts,
+        isLocked,
+      });
+    } finally {
+      setTimeout(() => setIsDownloading(false), 800);
+    }
   };
 
   return (
@@ -52,9 +71,21 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
           <span>Closing Count</span>
         </span>
 
-        <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
-          ৳{netRevenue.toLocaleString()}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleDownloadSlip}
+            disabled={isDownloading}
+            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-bold flex items-center gap-1 transition shadow-xs active:scale-95"
+            title="Download Closing Slip (PNG)"
+          >
+            <Download className="w-3.5 h-3.5 text-orange-600" />
+            <span className="hidden sm:inline">Slip</span>
+          </button>
+          <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+            ৳{netRevenue.toLocaleString()}
+          </span>
+        </div>
       </div>
 
       {/* Aggregate Banner (Compact) */}
@@ -212,6 +243,17 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
           )}
         </button>
       )}
+
+      {/* Download Slip Button */}
+      <button
+        type="button"
+        onClick={handleDownloadSlip}
+        disabled={isDownloading}
+        className="w-full bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-bold py-2 rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"
+      >
+        <Download className="w-3.5 h-3.5 text-orange-600" />
+        <span>{isDownloading ? 'Generating Closing Slip...' : 'Download Closing Slip (PNG)'}</span>
+      </button>
 
     </div>
   );

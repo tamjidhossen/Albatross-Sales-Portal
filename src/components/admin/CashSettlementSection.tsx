@@ -537,17 +537,16 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </button>
         </div>
 
-        {/* Download Summary Slip (PNG) prominently displayed after locking */}
-        {session.isLocked && (
-          <button
-            onClick={handleDownloadSlip}
-            disabled={isDownloading}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs active:scale-98 transition"
-          >
-            <Download className="w-4 h-4 text-white" />
-            <span>Download Summary Slip (PNG)</span>
-          </button>
-        )}
+        {/* Download Cash Slip (PNG) */}
+        <button
+          type="button"
+          onClick={handleDownloadSlip}
+          disabled={isDownloading}
+          className="w-full bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-bold py-2 rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5 text-orange-600" />
+          <span>{isDownloading ? 'Generating Cash Slip...' : 'Download Cash Slip (PNG)'}</span>
+        </button>
       </div>
 
       {/* Lock Confirmation Modal with Summary */}
