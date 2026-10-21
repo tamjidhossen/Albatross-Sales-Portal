@@ -88,8 +88,10 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
     setKhuchraInput(kVal === 0 ? '' : kVal.toString());
   }, [session.sessionDate, session.khuchraTakenFromReserve, session.openingCash]);
 
-  const isMatch = session.cashDifference === 0;
-  const isShortage = session.cashDifference < 0;
+  const expectedClosingCash = khuchraVal + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
+  const currentDiff = session.actualCashCounted - expectedClosingCash;
+  const isMatch = currentDiff === 0;
+  const isShortage = currentDiff < 0;
   const isEditable = !session.isLocked || isSuperAdmin;
 
   const handleKhuchraBlur = () => {
@@ -390,7 +392,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </div>
           <div className="pt-1.5 border-t border-zinc-200 flex justify-between items-baseline font-bold text-zinc-900">
             <span>= Expected Closing Drawer Cash:</span>
-            <span className="text-base font-extrabold text-orange-600">৳{session.expectedClosingCash.toLocaleString()}</span>
+            <span className="text-base font-extrabold text-orange-600">৳{expectedClosingCash.toLocaleString()}</span>
           </div>
         </div>
 
@@ -462,12 +464,12 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               <span className="block text-[10px] font-normal text-zinc-600">
                 {isMatch 
                   ? 'All cash & sales accounted for' 
-                  : `Diff: ${session.cashDifference > 0 ? '+' : ''}৳${session.cashDifference.toLocaleString()}`}
+                  : `Diff: ${currentDiff > 0 ? '+' : ''}৳${currentDiff.toLocaleString()}`}
               </span>
             </div>
           </div>
           <span className="text-sm font-black">
-            {session.cashDifference > 0 ? '+' : ''}৳{session.cashDifference.toLocaleString()}
+            {currentDiff > 0 ? '+' : ''}৳${currentDiff.toLocaleString()}
           </span>
         </div>
 

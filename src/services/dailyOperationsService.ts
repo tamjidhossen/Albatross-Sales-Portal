@@ -36,6 +36,18 @@ export const mapSessionFromDB = (row: any): DailySession => {
   const cleanActualCash = isUncounted && (rawActual === 1000 || rawActual === openingCash) ? 0 : rawActual;
   const cleanClosingSaved = isUncounted ? Math.max(0, openingSaved - khuchra) : rawClosingSaved;
 
+  const rawExpected = Number(row.expected_closing_cash) || 0;
+  const netRev = Number(row.net_estimated_revenue) || 0;
+  const totalExp = Number(row.total_expenses) || 0;
+  const totalPay = Number(row.total_payouts) || 0;
+  const dynamicExpected = khuchra + netRev - totalExp - totalPay;
+  const cleanExpected = row.status === 'open' && !Boolean(row.is_locked)
+    ? dynamicExpected
+    : rawExpected;
+  const cleanCashDiff = row.status === 'open' && !Boolean(row.is_locked)
+    ? cleanActualCash - cleanExpected
+    : (Number(row.cash_difference) || 0);
+
   return {
     sessionDate: row.session_date,
     status: row.status,
@@ -48,12 +60,12 @@ export const mapSessionFromDB = (row: any): DailySession => {
     totalProductsWasted: Number(row.total_products_wasted) || 0,
     grossEstimatedRevenue: Number(row.gross_estimated_revenue) || 0,
     estimatedDiscounts: Number(row.estimated_discounts) || 0,
-    netEstimatedRevenue: Number(row.net_estimated_revenue) || 0,
-    totalExpenses: Number(row.total_expenses) || 0,
-    totalPayouts: Number(row.total_payouts) || 0,
-    expectedClosingCash: Number(row.expected_closing_cash) || 0,
+    netEstimatedRevenue: netRev,
+    totalExpenses: totalExp,
+    totalPayouts: totalPay,
+    expectedClosingCash: cleanExpected,
     actualCashCounted: cleanActualCash,
-    cashDifference: Number(row.cash_difference) || 0,
+    cashDifference: cleanCashDiff,
     transferredToReserve: transferred,
     closingCartCash: Number(row.closing_cart_cash) || 0,
     closingSavedCash: cleanClosingSaved,
@@ -464,7 +476,8 @@ export const cascadeInventoryCarryover = (
       const netRevenue = Math.max(0, grossRevenue - nextSession.estimatedDiscounts);
       const totalExp = nextDay.expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalPay = nextDay.payouts.reduce((sum, p) => sum + p.amount, 0);
-      const expectedCash = nextSession.openingCash + netRevenue - totalExp - totalPay;
+      const khuchra = nextSession.khuchraTakenFromReserve || nextSession.openingCash || 0;
+      const expectedCash = khuchra + netRevenue - totalExp - totalPay;
 
       const finalNextSession: DailySession = {
         ...nextSession,
@@ -596,9 +609,18 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
           });
           const totalSold = dayData.items.reduce((s, i) => s + i.quantitySold, 0);
           const grossRev = dayData.items.reduce((s, i) => s + i.estimatedRevenue, 0);
+          const netRev = Math.max(0, grossRev - (dayData.session.estimatedDiscounts || 0));
+          const khuchra = dayData.session.khuchraTakenFromReserve || dayData.session.openingCash || 0;
+          const totalExp = dayData.expenses.reduce((s, e) => s + e.amount, 0);
+          const totalPay = dayData.payouts.reduce((s, p) => s + p.amount, 0);
+          const expCash = khuchra + netRev - totalExp - totalPay;
+
+          dayData.session.totalProductsPrepared = dayData.items.reduce((s, i) => s + i.totalAvailable, 0);
           dayData.session.totalProductsSold = totalSold;
           dayData.session.grossEstimatedRevenue = grossRev;
-          dayData.session.netEstimatedRevenue = Math.max(0, grossRev - (dayData.session.estimatedDiscounts || 0));
+          dayData.session.netEstimatedRevenue = netRev;
+          dayData.session.expectedClosingCash = expCash;
+          dayData.session.cashDifference = (dayData.session.actualCashCounted || 0) - expCash;
         }
       });
     } catch {}

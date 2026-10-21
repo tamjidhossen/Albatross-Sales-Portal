@@ -18,8 +18,10 @@ export const LockConfirmationModal: React.FC<LockConfirmationModalProps> = ({
   if (!isOpen) return null;
 
   const khuchra = session.khuchraTakenFromReserve || session.openingCash || 0;
-  const isMatch = session.cashDifference === 0;
-  const isShortage = session.cashDifference < 0;
+  const expectedClosing = khuchra + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
+  const currentDiff = session.actualCashCounted - expectedClosing;
+  const isMatch = currentDiff === 0;
+  const isShortage = currentDiff < 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -87,7 +89,7 @@ export const LockConfirmationModal: React.FC<LockConfirmationModalProps> = ({
             <span className={`font-bold ${isMatch ? 'text-emerald-600' : isShortage ? 'text-red-600' : 'text-amber-600'}`}>
               {isMatch 
                 ? 'Balanced (৳0)' 
-                : `${isShortage ? 'Shortage: −৳' : 'Surplus: +৳'}${Math.abs(session.cashDifference).toLocaleString()}`}
+                : `${isShortage ? 'Shortage: −৳' : 'Surplus: +৳'}${Math.abs(currentDiff).toLocaleString()}`}
             </span>
           </div>
 

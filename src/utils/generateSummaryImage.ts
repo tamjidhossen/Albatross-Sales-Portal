@@ -669,9 +669,10 @@ export function downloadCashSettlementSlip({
   ctx.lineTo(width - 38, y + 142);
   ctx.stroke();
 
-  drawRow('Expected Closing Drawer Cash:', `৳${session.expectedClosingCash.toLocaleString()}`, y + 164, '#0F172A', true);
+  const expectedCash = khuchra + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
+  drawRow('Expected Closing Drawer Cash:', `৳${expectedCash.toLocaleString()}`, y + 164, '#0F172A', true);
 
-  const diff = session.cashDifference;
+  const diff = session.actualCashCounted - expectedCash;
   const diffLabel = diff === 0 ? 'Exact Match (৳0)' : diff < 0 ? `Shortage: −৳${Math.abs(diff)}` : `Surplus: +৳${diff}`;
   const diffColor = diff === 0 ? '#059669' : diff < 0 ? '#DC2626' : '#D97706';
   drawRow('Actual Counted Drawer Cash Tonight:', `৳${session.actualCashCounted.toLocaleString()} (${diffLabel})`, y + 188, diffColor, true);

@@ -122,5 +122,45 @@ describe('Financial Math & Settlement Engine', () => {
     const finalReserve = safeCash + countedDrawerCash; // 1400 + 6000 = 7400
     assert.strictEqual(finalReserve, 7400);
   });
+
+  it('guarantees arithmetic consistency: 2500 khuchra + 4810 sales - 0 exp - 0 payouts = 7310 expected closing drawer cash', () => {
+    const khuchra = 2500;
+    const netFoodSales = 4810;
+    const bazaarExpenses = 0;
+    const payouts = 0;
+
+    const expectedClosingCash = khuchra + netFoodSales - bazaarExpenses - payouts;
+    assert.strictEqual(expectedClosingCash, 7310, 'Expected closing drawer cash must be 7,310, NOT 2,860!');
+
+    // Test mapSessionFromDB healing when DB has stale expectedClosingCash of 2860
+    const { mapSessionFromDB } = require('../src/services/dailyOperationsService');
+    const staleDBRow = {
+      session_date: '2026-10-21',
+      status: 'open',
+      is_locked: false,
+      opening_cash: 2500,
+      khuchra_taken_from_reserve: 2500,
+      opening_saved_cash: 20000,
+      net_estimated_revenue: 4810,
+      total_expenses: 0,
+      total_payouts: 0,
+      expected_closing_cash: 2860, // Stale!
+      actual_cash_counted: 0,
+      cash_difference: -2860,
+      transferred_to_reserve: 0,
+    };
+
+    const cleanSession = mapSessionFromDB(staleDBRow);
+    assert.strictEqual(
+      cleanSession.expectedClosingCash,
+      7310,
+      'mapSessionFromDB must dynamically heal stale expected_closing_cash to 7,310'
+    );
+    assert.strictEqual(
+      cleanSession.cashDifference,
+      -7310,
+      'cashDifference must match actual cash (0) - expected cash (7310)'
+    );
+  });
 });
 

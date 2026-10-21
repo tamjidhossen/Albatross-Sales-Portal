@@ -352,11 +352,14 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const netRevenue = Math.max(0, grossRevenue - discounts);
       const totalExp = nextExpenses.reduce((sum, e) => sum + e.amount, 0);
       const totalPay = nextPayouts.reduce((sum, p) => sum + p.amount, 0);
-      const expected = cur.session.openingCash + netRevenue - totalExp - totalPay;
+      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash || 0;
+      const expected = khuchra + netRevenue - totalExp - totalPay;
       const diff = actualCash - expected;
 
       const updatedSession: DailySession = {
         ...cur.session,
+        openingCash: khuchra,
+        khuchraTakenFromReserve: khuchra,
         totalProductsPrepared: totalPrepared,
         totalProductsSold: totalSold,
         totalProductsWasted: totalWasted,
@@ -616,12 +619,16 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     setAllDays((prevAll) => {
       const cur = prevAll[selectedDate];
       if (!cur) return prevAll;
-      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
+      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash || 0;
       const safeCash = Math.max(0, cur.session.openingSavedCash - khuchra);
       const nextReserve = safeCash + countedDrawerCash;
-      const diff = countedDrawerCash - cur.session.expectedClosingCash;
+      const expected = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
+      const diff = countedDrawerCash - expected;
       const updatedSession: DailySession = {
         ...cur.session,
+        openingCash: khuchra,
+        khuchraTakenFromReserve: khuchra,
+        expectedClosingCash: expected,
         actualCashCounted: countedDrawerCash,
         cashDifference: diff,
         closingSavedCash: nextReserve,
