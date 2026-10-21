@@ -5,6 +5,7 @@ export interface AggregatedAnalyticsResult {
   calcStartDate: string;
   calcEndDate: string;
   days: number;
+  isSalesLocked: boolean;
   grossSales: number;
   discounts: number;
   netSales: number;
@@ -222,10 +223,21 @@ export function calculateAggregatedAnalytics({
     closingReserve = isSaved ? latestDay.session.closingSavedCash : (safeCash + khuchra);
   }
 
+  // Shift Lock status:
+  // If operating days exist in the range, ALL of them must be closed & locked.
+  // If viewing a single active session fallback, that session must be locked.
+  let isSalesLocked = false;
+  if (sortedRange.length > 0) {
+    isSalesLocked = sortedRange.every((d) => Boolean(d.session.isLocked));
+  } else if (fallbackSession) {
+    isSalesLocked = Boolean(fallbackSession.isLocked);
+  }
+
   return {
     calcStartDate,
     calcEndDate,
     days,
+    isSalesLocked,
     grossSales,
     discounts,
     netSales,

@@ -3,6 +3,7 @@ export interface AnalyticsReportData {
   endDate: string;
   days: number;
   presetLabel: string;
+  isSalesLocked?: boolean;
   // Financials
   grossSales: number;
   discounts: number;
@@ -122,7 +123,7 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
     ctx.fillText(title, x + 8, y + 18);
 
     ctx.fillStyle = valColor;
-    ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
+    ctx.font = value.length > 9 ? 'bold 12px system-ui, -apple-system, sans-serif' : 'bold 15px system-ui, -apple-system, sans-serif';
     ctx.fillText(value, x + 8, y + 38);
 
     ctx.fillStyle = '#94A3B8';
@@ -130,10 +131,18 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
     ctx.fillText(subtitle, x + 8, y + 54);
   };
 
-  drawSummaryCard(xMargin, 'NET SALES', `৳${data.netSales.toLocaleString()}`, `${data.totalSold} sold`, '#F8FAFC', '#E2E8F0', '#0F172A');
+  if (data.isSalesLocked === false) {
+    drawSummaryCard(xMargin, 'NET SALES', 'Pending Lock', 'Locks at closing', '#FFFBEB', '#FDE68A', '#D97706');
+  } else {
+    drawSummaryCard(xMargin, 'NET SALES', `৳${data.netSales.toLocaleString()}`, `${data.totalSold} sold`, '#F8FAFC', '#E2E8F0', '#0F172A');
+  }
   drawSummaryCard(xMargin + cardWidth + cardSpacing, 'BAZAAR EXP', `৳${data.totalExp.toLocaleString()}`, 'Supplies', '#F8FAFC', '#E2E8F0', '#DC2626');
   drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 2, 'PAYOUTS', `৳${data.totalPay.toLocaleString()}`, 'Staff & owner', '#F8FAFC', '#E2E8F0', '#DC2626');
-  drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${data.netProfit.toLocaleString()}`, `Margin: ${data.profitMargin}%`, '#FFF7ED', '#FDBA74', '#EA4300');
+  if (data.isSalesLocked === false) {
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', 'Pending Lock', 'Calculates after lock', '#FFFBEB', '#FDE68A', '#D97706');
+  } else {
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${data.netProfit.toLocaleString()}`, `Margin: ${data.profitMargin}%`, '#FFF7ED', '#FDBA74', '#EA4300');
+  }
 
   y += cardHeight + 18;
 
@@ -187,7 +196,11 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
 
   let rowY = y + 20;
   // Row 1: Gross Sales & Discounts Given
-  drawMetricPair('Gross Food Sales:', `৳${data.grossSales.toLocaleString()}`, 'Discounts Given:', `−৳${data.discounts.toLocaleString()}`, rowY, '#0F172A', '#D97706');
+  if (data.isSalesLocked === false) {
+    drawMetricPair('Gross Food Sales:', 'Pending Lock', 'Discounts Given:', 'Pending Lock', rowY, '#D97706', '#D97706');
+  } else {
+    drawMetricPair('Gross Food Sales:', `৳${data.grossSales.toLocaleString()}`, 'Discounts Given:', `−৳${data.discounts.toLocaleString()}`, rowY, '#0F172A', '#D97706');
+  }
 
   // Row 2: Total Stock Value & Total Items Prepared
   rowY += 22;
@@ -205,7 +218,11 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   // Row 5: Average Daily Sales & Profit (Kept ONLY for multi-day range)
   if (data.days > 1) {
     rowY += 22;
-    drawMetricPair('Avg Daily Net Sales:', `৳${data.avgDailySales.toLocaleString()}/day`, 'Avg Daily Profit:', `৳${data.avgDailyProfit.toLocaleString()}/day`, rowY, '#0F172A', '#059669');
+    if (data.isSalesLocked === false) {
+      drawMetricPair('Avg Daily Net Sales:', 'Pending Lock', 'Avg Daily Profit:', 'Pending Lock', rowY, '#D97706', '#D97706');
+    } else {
+      drawMetricPair('Avg Daily Net Sales:', `৳${data.avgDailySales.toLocaleString()}/day`, 'Avg Daily Profit:', `৳${data.avgDailyProfit.toLocaleString()}/day`, rowY, '#0F172A', '#059669');
+    }
   }
 
   y += metricsBoxHeight + 18;
@@ -454,21 +471,35 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   ctx.fill();
   ctx.stroke();
 
-  // Formula Line
-  ctx.fillStyle = '#475569';
-  ctx.font = '11px system-ui, -apple-system, sans-serif';
-  ctx.fillText('FORMULA: Net Sales Revenue − Bazaar Expenses − Staff/Owner Payouts', xMargin + 12, y + 20);
+  if (data.isSalesLocked === false) {
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText('FORMULA: Net Sales Revenue − Bazaar Expenses − Staff/Owner Payouts', xMargin + 12, y + 20);
 
-  // Values Equation
-  ctx.fillStyle = '#0F172A';
-  ctx.font = '11px system-ui, -apple-system, sans-serif';
-  const equation = `৳${data.netSales.toLocaleString()} (Sales) − ৳${data.totalExp.toLocaleString()} (Bazaar) − ৳${data.totalPay.toLocaleString()} (Payouts)`;
-  ctx.fillText(equation, xMargin + 12, y + 38);
+    ctx.fillStyle = '#64748B';
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText(`Recorded Daytime Outflows: ৳${data.totalExp.toLocaleString()} (Bazaar) + ৳${data.totalPay.toLocaleString()} (Payouts)`, xMargin + 12, y + 38);
 
-  // Result Line
-  ctx.fillStyle = '#EA4300';
-  ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`= NET OPERATING PROFIT: ৳${data.netProfit.toLocaleString()} (Margin: ${data.profitMargin}%)`, xMargin + 12, y + 56);
+    ctx.fillStyle = '#D97706';
+    ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+    ctx.fillText('[Shift Open • Final Net Sales & Profit calculate after night closing & shift lock]', xMargin + 12, y + 56);
+  } else {
+    // Formula Line
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText('FORMULA: Net Sales Revenue − Bazaar Expenses − Staff/Owner Payouts', xMargin + 12, y + 20);
+
+    // Values Equation
+    ctx.fillStyle = '#0F172A';
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    const equation = `৳${data.netSales.toLocaleString()} (Sales) − ৳${data.totalExp.toLocaleString()} (Bazaar) − ৳${data.totalPay.toLocaleString()} (Payouts)`;
+    ctx.fillText(equation, xMargin + 12, y + 38);
+
+    // Result Line
+    ctx.fillStyle = '#EA4300';
+    ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+    ctx.fillText(`= NET OPERATING PROFIT: ৳${data.netProfit.toLocaleString()} (Margin: ${data.profitMargin}%)`, xMargin + 12, y + 56);
+  }
 
   y += 68 + 24;
 

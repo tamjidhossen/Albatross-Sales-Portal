@@ -296,4 +296,113 @@ describe('Analytics Aggregation Engine', () => {
     assert.strictEqual(result.totalStockValue, 60 * 120, 'Total stock value must be 7,200 (60 * 120), NOT 8,400');
     assert.strictEqual(result.totalWaste, 1);
   });
+
+  it('correctly sets isSalesLocked false when shift is open/unlocked and true when locked', () => {
+    // Open/unlocked shift during day operations
+    const openDayData: DayData = {
+      session: {
+        sessionDate: '2026-10-21',
+        status: 'open',
+        isLocked: false,
+        openingCash: 1000,
+        khuchraTakenFromReserve: 1000,
+        openingSavedCash: 20000,
+        totalProductsPrepared: 40,
+        totalProductsSold: 0,
+        totalProductsWasted: 0,
+        grossEstimatedRevenue: 0,
+        estimatedDiscounts: 0,
+        netEstimatedRevenue: 0,
+        totalExpenses: 2500,
+        totalPayouts: 0,
+        expectedClosingCash: -1500,
+        actualCashCounted: 0,
+        cashDifference: 0,
+        transferredToReserve: 0,
+        closingCartCash: 0,
+        closingSavedCash: 20000,
+      },
+      items: [
+        {
+          id: '1',
+          sessionDate: '2026-10-21',
+          productId: 'burger',
+          productName: 'Burger',
+          unitPrice: 120,
+          morningCarriedOver: 0,
+          morningNewPrepared: 40,
+          totalAvailable: 40,
+          closingCounted: 0,
+          closingUsableLeftover: 0,
+          closingWasted: 0,
+          quantitySold: 0,
+          estimatedRevenue: 0,
+        },
+      ],
+      expenses: [{ id: 'e1', sessionDate: '2026-10-21', category: 'Raw Materials', itemName: 'Meat', amount: 2500, paidByName: 'Tamjid' }],
+      payouts: [],
+    };
+
+    // Single unlocked day
+    const unlockedResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-21',
+      calcEndDate: '2026-10-21',
+      allSessionsData: { '2026-10-21': openDayData },
+    });
+    assert.strictEqual(unlockedResult.isSalesLocked, false, 'Unlocked shift must report isSalesLocked false');
+    assert.strictEqual(unlockedResult.totalExp, 2500, 'Daytime bazaar expense must still be accurately recorded');
+
+    // Fallback session unlocked
+    const fallbackUnlockedResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-21',
+      calcEndDate: '2026-10-21',
+      allSessionsData: {},
+      fallbackSession: openDayData.session,
+      fallbackItems: openDayData.items,
+      fallbackExpenses: openDayData.expenses,
+      fallbackPayouts: openDayData.payouts,
+      selectedDate: '2026-10-21',
+    });
+    assert.strictEqual(fallbackUnlockedResult.isSalesLocked, false, 'Fallback unlocked session must report isSalesLocked false');
+
+    // Locked day
+    const lockedDayData: DayData = {
+      ...openDayData,
+      session: {
+        ...openDayData.session,
+        status: 'closed',
+        isLocked: true,
+        totalProductsSold: 35,
+        grossEstimatedRevenue: 4200,
+        netEstimatedRevenue: 4200,
+      },
+      items: [
+        {
+          ...openDayData.items[0],
+          quantitySold: 35,
+          estimatedRevenue: 4200,
+        },
+      ],
+    };
+
+    const lockedResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-21',
+      calcEndDate: '2026-10-21',
+      allSessionsData: { '2026-10-21': lockedDayData },
+    });
+    assert.strictEqual(lockedResult.isSalesLocked, true, 'Locked shift must report isSalesLocked true');
+    assert.strictEqual(lockedResult.netSales, 4200);
+    assert.strictEqual(lockedResult.netProfit, 4200 - 2500); // 1700
+
+    // Multi-day range where 1 day is locked and 1 day is unlocked -> overall range sales not locked
+    const multiDayMixedResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-20',
+      calcEndDate: '2026-10-21',
+      allSessionsData: {
+        '2026-10-20': lockedDayData,
+        '2026-10-21': openDayData,
+      },
+    });
+    assert.strictEqual(multiDayMixedResult.isSalesLocked, false, 'If any operating day is unlocked, range isSalesLocked must be false');
+  });
 });

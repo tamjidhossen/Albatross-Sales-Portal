@@ -155,6 +155,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         endDate: analyticsData.calcEndDate,
         days: analyticsData.days,
         presetLabel,
+        isSalesLocked: analyticsData.isSalesLocked,
         grossSales: analyticsData.grossSales,
         discounts: analyticsData.discounts,
         netSales: analyticsData.netSales,
@@ -498,10 +499,23 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         <div className="grid grid-cols-2 gap-2 pt-0.5">
           <div className="bg-zinc-50 rounded-lg p-2 border border-zinc-200">
             <span className="text-[10px] text-zinc-500 font-medium block">Net Sales</span>
-            <span className="text-sm font-extrabold text-zinc-900 block mt-0.5">
-              ৳{analyticsData.netSales.toLocaleString()}
-            </span>
-            <span className="text-[9px] text-emerald-600 font-medium">{analyticsData.totalSold} items sold</span>
+            {analyticsData.isSalesLocked ? (
+              <>
+                <span className="text-sm font-extrabold text-zinc-900 block mt-0.5">
+                  ৳{analyticsData.netSales.toLocaleString()}
+                </span>
+                <span className="text-[9px] text-emerald-600 font-medium">{analyticsData.totalSold} items sold</span>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                    Pending Lock
+                  </span>
+                </div>
+                <span className="text-[9px] text-zinc-400 block mt-0.5">Locks at shift closing</span>
+              </>
+            )}
           </div>
 
           <div className="bg-zinc-50 rounded-lg p-2 border border-zinc-200">
@@ -525,10 +539,23 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
               <Sparkles className="w-2.5 h-2.5" />
               <span>Net Profit</span>
             </span>
-            <span className="text-sm font-black text-orange-600 block mt-0.5">
-              ৳{analyticsData.netProfit.toLocaleString()}
-            </span>
-            <span className="text-[9px] text-orange-700 font-medium">Margin: {analyticsData.profitMargin}%</span>
+            {analyticsData.isSalesLocked ? (
+              <>
+                <span className="text-sm font-black text-orange-600 block mt-0.5">
+                  ৳{analyticsData.netProfit.toLocaleString()}
+                </span>
+                <span className="text-[9px] text-orange-700 font-medium">Margin: {analyticsData.profitMargin}%</span>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                    Pending Lock
+                  </span>
+                </div>
+                <span className="text-[9px] text-amber-700 block mt-0.5">Calculates after lock</span>
+              </>
+            )}
           </div>
         </div>
 
