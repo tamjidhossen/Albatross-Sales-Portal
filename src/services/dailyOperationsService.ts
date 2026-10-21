@@ -21,32 +21,48 @@ export const getTodayDateString = (): string => {
 // Database Mappers: snake_case (Supabase) <-> camelCase (TypeScript)
 // -------------------------------------------------------------
 
-export const mapSessionFromDB = (row: any): DailySession => ({
-  sessionDate: row.session_date,
-  status: row.status,
-  isLocked: Boolean(row.is_locked),
-  openingCash: Number(row.opening_cash) || 0,
-  khuchraTakenFromReserve: Number(row.khuchra_taken_from_reserve || row.opening_cash) || 0,
-  openingSavedCash: Number(row.opening_saved_cash) || 0,
-  totalProductsPrepared: Number(row.total_products_prepared) || 0,
-  totalProductsSold: Number(row.total_products_sold) || 0,
-  totalProductsWasted: Number(row.total_products_wasted) || 0,
-  grossEstimatedRevenue: Number(row.gross_estimated_revenue) || 0,
-  estimatedDiscounts: Number(row.estimated_discounts) || 0,
-  netEstimatedRevenue: Number(row.net_estimated_revenue) || 0,
-  totalExpenses: Number(row.total_expenses) || 0,
-  totalPayouts: Number(row.total_payouts) || 0,
-  expectedClosingCash: Number(row.expected_closing_cash) || 0,
-  actualCashCounted: Number(row.actual_cash_counted) || 0,
-  cashDifference: Number(row.cash_difference) || 0,
-  transferredToReserve: Number(row.transferred_to_reserve) || 0,
-  closingCartCash: Number(row.closing_cart_cash) || 0,
-  closingSavedCash: Number(row.closing_saved_cash) || 0,
-  notes: row.notes || '',
-  createdBy: row.created_by,
-  closedBy: row.closed_by,
-  closedAt: row.closed_at,
-});
+export const mapSessionFromDB = (row: any): DailySession => {
+  const transferred = Number(row.transferred_to_reserve) || 0;
+  const rawActual = Number(row.actual_cash_counted) || 0;
+  const openingCash = Number(row.opening_cash) || 0;
+  const khuchra = Number(row.khuchra_taken_from_reserve || row.opening_cash) || 0;
+  const openingSaved = Number(row.opening_saved_cash) || 0;
+  const rawClosingSaved = Number(row.closing_saved_cash) || 0;
+
+  // If drawer has not been counted & transferred to reserve tonight:
+  // - actualCashCounted defaults to 0 (clean legacy uncounted default 1000 or openingCash)
+  // - closingSavedCash reflects safe cash remaining after taking khuchra: openingSaved - khuchra
+  const isUncounted = transferred === 0 && row.status === 'open';
+  const cleanActualCash = isUncounted && (rawActual === 1000 || rawActual === openingCash) ? 0 : rawActual;
+  const cleanClosingSaved = isUncounted ? Math.max(0, openingSaved - khuchra) : rawClosingSaved;
+
+  return {
+    sessionDate: row.session_date,
+    status: row.status,
+    isLocked: Boolean(row.is_locked),
+    openingCash,
+    khuchraTakenFromReserve: khuchra,
+    openingSavedCash: openingSaved,
+    totalProductsPrepared: Number(row.total_products_prepared) || 0,
+    totalProductsSold: Number(row.total_products_sold) || 0,
+    totalProductsWasted: Number(row.total_products_wasted) || 0,
+    grossEstimatedRevenue: Number(row.gross_estimated_revenue) || 0,
+    estimatedDiscounts: Number(row.estimated_discounts) || 0,
+    netEstimatedRevenue: Number(row.net_estimated_revenue) || 0,
+    totalExpenses: Number(row.total_expenses) || 0,
+    totalPayouts: Number(row.total_payouts) || 0,
+    expectedClosingCash: Number(row.expected_closing_cash) || 0,
+    actualCashCounted: cleanActualCash,
+    cashDifference: Number(row.cash_difference) || 0,
+    transferredToReserve: transferred,
+    closingCartCash: Number(row.closing_cart_cash) || 0,
+    closingSavedCash: cleanClosingSaved,
+    notes: row.notes || '',
+    createdBy: row.created_by,
+    closedBy: row.closed_by,
+    closedAt: row.closed_at,
+  };
+};
 
 export const mapSessionToDB = (session: DailySession) => ({
   session_date: session.sessionDate,
@@ -641,7 +657,7 @@ export const startShiftSession = async (
       cashDifference: -openingCash,
       transferredToReserve: 0,
       closingCartCash: 0,
-      closingSavedCash: prevSaved,
+      closingSavedCash: Math.max(0, prevSaved - openingCash),
       notes: '',
     };
 

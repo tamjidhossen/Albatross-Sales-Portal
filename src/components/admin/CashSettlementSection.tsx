@@ -69,9 +69,9 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   const khuchraVal = session.khuchraTakenFromReserve || session.openingCash || 0;
   const [khuchraInput, setKhuchraInput] = useState(khuchraVal === 0 ? '' : khuchraVal.toString());
 
-  // Closing drawer cash state (defaults to 0 / empty for uncounted shifts)
-  const isDefaultUncounted = session.status === 'open' && session.actualCashCounted === session.openingCash && (!session.transferredToReserve || session.transferredToReserve === 0);
-  const initialDrawerVal = (session.actualCashCounted === 0 || isDefaultUncounted) ? '' : session.actualCashCounted.toString();
+  // Closing drawer cash state (defaults to 0 for uncounted shifts)
+  const isUncounted = (!session.transferredToReserve || session.transferredToReserve === 0) || session.actualCashCounted === 0 || session.actualCashCounted === 1000 || session.actualCashCounted === session.openingCash;
+  const initialDrawerVal = isUncounted ? '0' : session.actualCashCounted.toString();
   const [closingDrawerInput, setClosingDrawerInput] = useState(initialDrawerVal);
   const [isSavedDrawer, setIsSavedDrawer] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -79,8 +79,8 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
   // Sync inputs if selected date or underlying session data updates
   useEffect(() => {
-    const isUncounted = session.status === 'open' && session.actualCashCounted === session.openingCash && (!session.transferredToReserve || session.transferredToReserve === 0);
-    setClosingDrawerInput((session.actualCashCounted === 0 || isUncounted) ? '' : session.actualCashCounted.toString());
+    const uncounted = (!session.transferredToReserve || session.transferredToReserve === 0) || session.actualCashCounted === 0 || session.actualCashCounted === 1000 || session.actualCashCounted === session.openingCash;
+    setClosingDrawerInput(uncounted ? '0' : session.actualCashCounted.toString());
   }, [session.sessionDate, session.actualCashCounted, session.status, session.openingCash, session.transferredToReserve]);
 
   useEffect(() => {
@@ -406,7 +406,19 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
               min="0"
               disabled={!isEditable}
               value={closingDrawerInput}
-              onChange={(e) => setClosingDrawerInput(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^0[0-9]+/.test(val)) {
+                  setClosingDrawerInput(val.replace(/^0+/, ''));
+                } else {
+                  setClosingDrawerInput(val);
+                }
+              }}
+              onBlur={() => {
+                if (closingDrawerInput === '') {
+                  setClosingDrawerInput('0');
+                }
+              }}
               placeholder="0"
               className="w-full h-9 rounded-lg bg-white border border-zinc-300 text-center font-extrabold text-base text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
@@ -476,7 +488,9 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </div>
           <div className="flex justify-between border-t border-orange-200 pt-1 font-bold text-orange-900">
             <span>Total Cash Reserve Now:</span>
-            <span className="font-black text-xs text-orange-600">৳{session.closingSavedCash.toLocaleString()}</span>
+            <span className="font-black text-xs text-orange-600">
+              ৳{((session.transferredToReserve || 0) > 0 ? session.closingSavedCash : (Math.max(0, session.openingSavedCash - khuchraVal) + khuchraVal)).toLocaleString()}
+            </span>
           </div>
         </div>
 

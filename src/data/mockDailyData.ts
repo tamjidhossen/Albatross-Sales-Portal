@@ -59,7 +59,7 @@ export const createDefaultSessionForDate = (
       cashDifference: -openingCash,
       transferredToReserve: 0,
       closingCartCash: 0,
-      closingSavedCash: openingReserve,
+      closingSavedCash: Math.max(0, openingReserve - openingCash),
       notes: '',
     },
     items: (products.length > 0 ? products : INITIAL_PRODUCTS).map((prod) => ({

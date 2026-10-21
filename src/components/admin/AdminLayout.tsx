@@ -586,12 +586,19 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     lastLocalEditTimeRef.current = Date.now();
     updateCurrentDay((cur) => {
       const exp = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
+      const hasSavedDrawer = (cur.session.transferredToReserve || 0) > 0;
+      const safeCash = Math.max(0, cur.session.openingSavedCash - khuchra);
+      const closingSaved = hasSavedDrawer
+        ? safeCash + cur.session.actualCashCounted
+        : safeCash;
+
       const updatedSession: DailySession = {
         ...cur.session,
         openingCash: khuchra,
         khuchraTakenFromReserve: khuchra,
         expectedClosingCash: exp,
         cashDifference: cur.session.actualCashCounted - exp,
+        closingSavedCash: closingSaved,
       };
       persistSession(updatedSession);
       return {
@@ -599,7 +606,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         session: updatedSession,
       };
     });
-    logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Adjusted morning khuchra cash`);
+    logAudit('session', selectedDate, 'UPDATE', 'khuchra', activeDay.session.openingCash, khuchra, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Adjusted morning khuchra cash to ৳${khuchra}`);
   };
 
   // Save Drawer Cash to Reserve Handler
@@ -610,8 +617,8 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const cur = prevAll[selectedDate];
       if (!cur) return prevAll;
       const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash;
-      const netCashGenerated = countedDrawerCash - khuchra;
-      const nextReserve = cur.session.openingSavedCash + netCashGenerated;
+      const safeCash = Math.max(0, cur.session.openingSavedCash - khuchra);
+      const nextReserve = safeCash + countedDrawerCash;
       const diff = countedDrawerCash - cur.session.expectedClosingCash;
       const updatedSession: DailySession = {
         ...cur.session,

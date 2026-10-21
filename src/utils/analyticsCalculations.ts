@@ -215,7 +215,11 @@ export function calculateAggregatedAnalytics({
   // Closing cash reserve for latest day in range
   let closingReserve = fallbackSession?.closingSavedCash || 21000;
   if (sortedRange.length > 0) {
-    closingReserve = sortedRange[sortedRange.length - 1].session.closingSavedCash || 0;
+    const latestDay = sortedRange[sortedRange.length - 1];
+    const isSaved = (latestDay.session.transferredToReserve || 0) > 0;
+    const khuchra = latestDay.session.khuchraTakenFromReserve || latestDay.session.openingCash || 0;
+    const safeCash = Math.max(0, latestDay.session.openingSavedCash - khuchra);
+    closingReserve = isSaved ? latestDay.session.closingSavedCash : (safeCash + khuchra);
   }
 
   return {

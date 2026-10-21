@@ -98,5 +98,29 @@ describe('Financial Math & Settlement Engine', () => {
     const countedSurplus = 3850;
     assert.strictEqual(countedSurplus - expectedCash, 150);
   });
+
+  it('correctly models cash reserve: khuchra is taken from reserve so cash + khuchra equals total reserve', () => {
+    const totalStartingReserve = 3900;
+    
+    // Scenario 1: Khuchra is 0 -> safe cash = 3900, khuchra = 0, total = 3900
+    let khuchra = 0;
+    let safeCash = Math.max(0, totalStartingReserve - khuchra);
+    let totalReserve = safeCash + khuchra;
+    assert.strictEqual(safeCash, 3900);
+    assert.strictEqual(totalReserve, 3900);
+
+    // Scenario 2: User adds khuchra as 2500 -> safe cash = 1400, khuchra = 2500, total = 3900
+    khuchra = 2500;
+    safeCash = Math.max(0, totalStartingReserve - khuchra);
+    totalReserve = safeCash + khuchra;
+    assert.strictEqual(safeCash, 1400);
+    assert.strictEqual(khuchra, 2500);
+    assert.strictEqual(totalReserve, 3900);
+
+    // Scenario 3: At night closing, drawer cash of 6000 is counted and saved to reserve
+    const countedDrawerCash = 6000;
+    const finalReserve = safeCash + countedDrawerCash; // 1400 + 6000 = 7400
+    assert.strictEqual(finalReserve, 7400);
+  });
 });
 

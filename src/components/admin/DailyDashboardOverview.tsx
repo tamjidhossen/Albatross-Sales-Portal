@@ -340,18 +340,27 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
       ) : (
         <>
           {/* Cash Reserve Block (Clean: Big Total + Bottom Text only) */}
-          <div className="bg-gradient-to-br from-[#EA4300] to-orange-600 rounded-2xl p-3.5 text-white shadow-sm">
-            <div className="flex items-center gap-1.5 text-orange-100 text-[11px] font-bold uppercase tracking-wider">
-              <PiggyBank className="w-4 h-4 text-yellow-300" />
-              <span>Total Cash Reserve</span>
-            </div>
-            <div className="text-2xl font-black tracking-tight mt-0.5">
-              ৳{(session.closingSavedCash + khuchra).toLocaleString()}
-            </div>
-            <span className="text-[11px] text-orange-100/90 font-medium block mt-1">
-              Saved Cash (৳{session.closingSavedCash.toLocaleString()}) + Khuchra (৳{khuchra.toLocaleString()})
-            </span>
-          </div>
+          {(() => {
+            const isDrawerSaved = (session.transferredToReserve || 0) > 0;
+            const safeCash = Math.max(0, session.openingSavedCash - khuchra);
+            const totalReserve = isDrawerSaved ? session.closingSavedCash : (safeCash + khuchra);
+            return (
+              <div className="bg-gradient-to-br from-[#EA4300] to-orange-600 rounded-2xl p-3.5 text-white shadow-sm">
+                <div className="flex items-center gap-1.5 text-orange-100 text-[11px] font-bold uppercase tracking-wider">
+                  <PiggyBank className="w-4 h-4 text-yellow-300" />
+                  <span>Total Cash Reserve</span>
+                </div>
+                <div className="text-2xl font-black tracking-tight mt-0.5">
+                  ৳{totalReserve.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-orange-100/90 font-medium block mt-1">
+                  {isDrawerSaved
+                    ? `Cash (৳${safeCash.toLocaleString()}) + Drawer (৳${session.actualCashCounted.toLocaleString()}) = ৳${totalReserve.toLocaleString()} Total`
+                    : `Cash (৳${safeCash.toLocaleString()}) + Khuchra (৳${khuchra.toLocaleString()}) = ৳${totalReserve.toLocaleString()} Total`}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* 2x2 High-Density Action Buttons */}
           <div className="grid grid-cols-2 gap-2">
