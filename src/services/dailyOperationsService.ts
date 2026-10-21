@@ -89,21 +89,38 @@ export const mapSessionToDB = (session: DailySession) => ({
   closed_at: session.closedAt,
 });
 
-export const mapInventoryFromDB = (row: any): DailyInventoryItem => ({
-  id: row.id,
-  sessionDate: row.session_date,
-  productId: row.product_id,
-  productName: row.product_name,
-  unitPrice: Number(row.unit_price),
-  morningCarriedOver: Number(row.morning_carried_over) || 0,
-  morningNewPrepared: Number(row.morning_new_prepared) || 0,
-  totalAvailable: Number(row.total_available) || (Number(row.morning_carried_over) + Number(row.morning_new_prepared)) || 0,
-  closingCounted: Number(row.closing_counted) || 0,
-  closingUsableLeftover: Number(row.closing_usable_leftover) || 0,
-  closingWasted: Number(row.closing_wasted) || 0,
-  quantitySold: Number(row.quantity_sold) || 0,
-  estimatedRevenue: Number(row.estimated_revenue) || 0,
-});
+export const mapInventoryFromDB = (row: any): DailyInventoryItem => {
+  const carried = Number(row.morning_carried_over) || 0;
+  const prepared = Number(row.morning_new_prepared) || 0;
+  const avail = Number(row.total_available) || (carried + prepared) || 0;
+  const usable = Number(row.closing_usable_leftover) || 0;
+  const wasted = Number(row.closing_wasted) || 0;
+  const price = Number(row.unit_price) || 0;
+
+  // Derive sold: if explicitly stored in row use that, otherwise default to avail - usable - wasted
+  const sold = row.quantity_sold !== undefined && row.quantity_sold !== null
+    ? Number(row.quantity_sold)
+    : Math.max(0, avail - usable - wasted);
+  const rev = row.estimated_revenue !== undefined && row.estimated_revenue !== null
+    ? Number(row.estimated_revenue)
+    : sold * price;
+
+  return {
+    id: row.id,
+    sessionDate: row.session_date,
+    productId: row.product_id,
+    productName: row.product_name,
+    unitPrice: price,
+    morningCarriedOver: carried,
+    morningNewPrepared: prepared,
+    totalAvailable: avail,
+    closingCounted: Number(row.closing_counted) || (usable + wasted),
+    closingUsableLeftover: usable,
+    closingWasted: wasted,
+    quantitySold: sold,
+    estimatedRevenue: rev,
+  };
+};
 
 export const mapInventoryToDB = (item: DailyInventoryItem) => ({
   id: item.id.includes('-') && item.id.length > 20 ? item.id : undefined,
@@ -385,7 +402,10 @@ export const cascadeInventoryCarryover = (
         if (nextItem.morningCarriedOver !== expectedCarry) {
           nextDayModified = true;
           const newTotalAvail = expectedCarry + nextItem.morningNewPrepared;
-          const sold = nextItem.quantitySold;
+          // If nextDay is an open shift and closing count was not explicitly changed by user
+          // (reusable === 0 && waste === 0), sold defaults to the new total available!
+          const isDefaultCount = !nextDay.session.isLocked && nextItem.closingUsableLeftover === 0 && nextItem.closingWasted === 0;
+          const sold = isDefaultCount ? newTotalAvail : Math.min(newTotalAvail, nextItem.quantitySold);
           const waste = nextItem.closingWasted;
           const reusable = Math.max(0, newTotalAvail - sold - waste);
           return {
@@ -394,6 +414,7 @@ export const cascadeInventoryCarryover = (
             totalAvailable: newTotalAvail,
             closingUsableLeftover: reusable,
             closingCounted: reusable + waste,
+            quantitySold: sold,
             estimatedRevenue: sold * nextItem.unitPrice,
           };
         }
@@ -558,6 +579,26 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
               });
             }
           });
+
+          // Heal legacy open sessions where carryover wasn't counted as sold by default
+          dayData.items.forEach((item) => {
+            if (
+              item.morningCarriedOver > 0 &&
+              item.closingUsableLeftover === item.morningCarriedOver &&
+              item.closingWasted === 0 &&
+              item.quantitySold === item.morningNewPrepared
+            ) {
+              item.closingUsableLeftover = 0;
+              item.closingCounted = 0;
+              item.quantitySold = item.totalAvailable;
+              item.estimatedRevenue = item.totalAvailable * item.unitPrice;
+            }
+          });
+          const totalSold = dayData.items.reduce((s, i) => s + i.quantitySold, 0);
+          const grossRev = dayData.items.reduce((s, i) => s + i.estimatedRevenue, 0);
+          dayData.session.totalProductsSold = totalSold;
+          dayData.session.grossEstimatedRevenue = grossRev;
+          dayData.session.netEstimatedRevenue = Math.max(0, grossRev - (dayData.session.estimatedDiscounts || 0));
         }
       });
     } catch {}
@@ -637,6 +678,30 @@ export const startShiftSession = async (
       }
     }
 
+    // Preload inventory items for each active product with carryover
+    const inventoryItems: DailyInventoryItem[] = activeProducts.map((p) => {
+      const carried = p.canCarryover ? (prevLeftovers[p.id] || 0) : 0;
+      return {
+        id: `${sessionDate}-${p.id}`,
+        sessionDate,
+        productId: p.id,
+        productName: p.name,
+        unitPrice: p.defaultPrice,
+        morningCarriedOver: carried,
+        morningNewPrepared: 0,
+        totalAvailable: carried,
+        closingCounted: 0,
+        closingUsableLeftover: 0,
+        closingWasted: 0,
+        quantitySold: carried,
+        estimatedRevenue: carried * p.defaultPrice,
+      };
+    });
+
+    const initialPrepared = inventoryItems.reduce((s, i) => s + i.totalAvailable, 0);
+    const initialSold = inventoryItems.reduce((s, i) => s + i.quantitySold, 0);
+    const initialGross = inventoryItems.reduce((s, i) => s + i.estimatedRevenue, 0);
+
     const newSession: DailySession = {
       sessionDate,
       status: 'open',
@@ -644,12 +709,12 @@ export const startShiftSession = async (
       openingCash,
       khuchraTakenFromReserve: openingCash,
       openingSavedCash: prevSaved,
-      totalProductsPrepared: 0,
-      totalProductsSold: 0,
+      totalProductsPrepared: initialPrepared,
+      totalProductsSold: initialSold,
       totalProductsWasted: 0,
-      grossEstimatedRevenue: 0,
+      grossEstimatedRevenue: initialGross,
       estimatedDiscounts: 0,
-      netEstimatedRevenue: 0,
+      netEstimatedRevenue: initialGross,
       totalExpenses: 0,
       totalPayouts: 0,
       expectedClosingCash: openingCash,
@@ -664,26 +729,6 @@ export const startShiftSession = async (
     // Insert session into Supabase
     await supabase.from('daily_sessions').insert(mapSessionToDB(newSession));
 
-    // Preload inventory items for each active product with carryover
-    const inventoryItems: DailyInventoryItem[] = activeProducts.map((p) => {
-      const carried = p.canCarryover ? (prevLeftovers[p.id] || 0) : 0;
-      return {
-        id: `${sessionDate}-${p.id}`,
-        sessionDate,
-        productId: p.id,
-        productName: p.name,
-        unitPrice: p.defaultPrice,
-        morningCarriedOver: carried,
-        morningNewPrepared: 0,
-        totalAvailable: carried,
-        closingCounted: carried,
-        closingUsableLeftover: carried,
-        closingWasted: 0,
-        quantitySold: 0,
-        estimatedRevenue: 0,
-      };
-    });
-
     if (inventoryItems.length > 0) {
       const invPayload = inventoryItems.map((item) => ({
         session_date: item.sessionDate,
@@ -692,8 +737,8 @@ export const startShiftSession = async (
         unit_price: item.unitPrice,
         morning_carried_over: item.morningCarriedOver,
         morning_new_prepared: 0,
-        closing_counted: item.closingCounted,
-        closing_usable_leftover: item.closingUsableLeftover,
+        closing_counted: 0,
+        closing_usable_leftover: 0,
         closing_wasted: 0,
       }));
       await supabase.from('daily_inventory').upsert(invPayload, { onConflict: 'session_date,product_id' });

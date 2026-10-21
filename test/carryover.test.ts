@@ -201,5 +201,89 @@ describe('Inventory Carryover & Multi-Day Cascade Engine', () => {
 
     assert.strictEqual(updatedDay2.session.openingSavedCash, 25000);
   });
+
+  it('defaults sold box in closing to total in opening (carryover + newly prepared), NOT just current day new stuff', () => {
+    // Day 1 has 10 leftover
+    const day1 = createMockDay('2026-10-18', 20, 10, 0, true);
+    assert.strictEqual(day1.items[0].closingUsableLeftover, 10);
+
+    // Day 2 starts with 10 carried over, then prepares 10 fresh burgers
+    // Total opening available = 10 carried + 10 fresh = 20 burgers
+    const day2 = createMockDay('2026-10-19', 20, 20, 0, false);
+    day2.items[0].morningCarriedOver = 10;
+    day2.items[0].morningNewPrepared = 10;
+    day2.items[0].totalAvailable = 20;
+    day2.items[0].closingUsableLeftover = 0;
+    day2.items[0].closingWasted = 0;
+    day2.items[0].quantitySold = 20; // Default: all 20 sold!
+
+    const allDays = {
+      '2026-10-18': day1,
+      '2026-10-19': day2,
+    };
+
+    // Verify closing sold box shows 20 by default (NOT just 10 new stuff)
+    assert.strictEqual(
+      day2.items[0].quantitySold,
+      20,
+      'Closing sold box must show 20 (10 new + 10 leftover) by default'
+    );
+    assert.strictEqual(
+      day2.items[0].closingUsableLeftover,
+      0,
+      'Leftover tomorrow must default to 0 unless changed by user'
+    );
+
+    // Now Day 1 carryover is updated from 10 to 15 (e.g. Day 1 sold fewer)
+    day1.items[0].quantitySold = 5;
+    day1.items[0].closingUsableLeftover = 15;
+
+    const { updatedDays } = cascadeInventoryCarryover(allDays, '2026-10-18');
+    const updatedDay2 = updatedDays['2026-10-19'];
+
+    // Day 2 total available is now 15 carried + 10 fresh = 25
+    // In default mode, sold box must now show 25 (NOT 10!)
+    assert.strictEqual(updatedDay2.items[0].morningCarriedOver, 15);
+    assert.strictEqual(updatedDay2.items[0].totalAvailable, 25);
+    assert.strictEqual(
+      updatedDay2.items[0].quantitySold,
+      25,
+      'Closing sold box must automatically default to 25 when carryover updates'
+    );
+    assert.strictEqual(updatedDay2.items[0].closingUsableLeftover, 0);
+  });
+
+  it('preserves user modified closing count when user explicitly changes sold', () => {
+    // Day 1 has 10 leftover
+    const day1 = createMockDay('2026-10-18', 20, 10, 0, true);
+
+    // Day 2 has 10 carried + 10 new = 20 available.
+    // User explicitly changed closing sold from 20 to 18 (so 2 leftover)
+    const day2 = createMockDay('2026-10-19', 20, 18, 0, false);
+    day2.items[0].morningCarriedOver = 10;
+    day2.items[0].morningNewPrepared = 10;
+    day2.items[0].totalAvailable = 20;
+    day2.items[0].quantitySold = 18;
+    day2.items[0].closingUsableLeftover = 2; // User changed closing count!
+
+    const allDays = {
+      '2026-10-18': day1,
+      '2026-10-19': day2,
+    };
+
+    // User updates Day 1 leftover from 10 to 12
+    day1.items[0].quantitySold = 8;
+    day1.items[0].closingUsableLeftover = 12;
+
+    const { updatedDays } = cascadeInventoryCarryover(allDays, '2026-10-18');
+    const updatedDay2 = updatedDays['2026-10-19'];
+
+    // Day 2 total available is now 12 + 10 = 22
+    // User explicitly entered 18 sold, so 18 sold must be preserved, and reusable adjusts to 22 - 18 = 4
+    assert.strictEqual(updatedDay2.items[0].morningCarriedOver, 12);
+    assert.strictEqual(updatedDay2.items[0].totalAvailable, 22);
+    assert.strictEqual(updatedDay2.items[0].quantitySold, 18, 'User specified sold count of 18 must be preserved');
+    assert.strictEqual(updatedDay2.items[0].closingUsableLeftover, 4, 'Leftover must adjust to 22 - 18 = 4');
+  });
 });
 

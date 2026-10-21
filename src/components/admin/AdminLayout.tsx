@@ -467,8 +467,8 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       closingCounted: 0,
       closingUsableLeftover: 0,
       closingWasted: 0,
-      quantitySold: 0,
-      estimatedRevenue: 0,
+      quantitySold: prepared,
+      estimatedRevenue: prepared * price,
     };
 
     const next = [...inventoryItems, newItem];
