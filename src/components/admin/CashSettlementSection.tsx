@@ -473,28 +473,44 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </span>
         </div>
 
-        {/* End of day breakdown */}
-        <div className="bg-orange-50/60 border border-orange-200 rounded-lg p-2 text-[11px] space-y-1">
-          <span className="font-bold text-orange-950 block">End of Day Settlement Summary</span>
-          <div className="flex justify-between text-zinc-600">
-            <span>Bazaar Purchases:</span>
-            <span className="font-bold text-zinc-800">৳{session.totalExpenses}</span>
-          </div>
-          <div className="flex justify-between text-zinc-600">
-            <span>Staff / Owner Payouts:</span>
-            <span className="font-bold text-zinc-800">৳{session.totalPayouts}</span>
-          </div>
-          <div className="flex justify-between text-zinc-600">
-            <span>Khuchra Cash Returned:</span>
-            <span className="font-bold text-zinc-800">৳{khuchraVal}</span>
-          </div>
-          <div className="flex justify-between border-t border-orange-200 pt-1 font-bold text-orange-900">
-            <span>Total Cash Reserve Now:</span>
-            <span className="font-black text-xs text-orange-600">
-              ৳{((session.transferredToReserve || 0) > 0 ? session.closingSavedCash : (Math.max(0, session.openingSavedCash - khuchraVal) + khuchraVal)).toLocaleString()}
-            </span>
-          </div>
-        </div>
+        {/* Reserve Settlement Summary */}
+        {(() => {
+          const isDrawerSaved = (session.transferredToReserve || 0) > 0;
+          const safeCash = Math.max(0, session.openingSavedCash - khuchraVal);
+
+          return (
+            <div className="bg-orange-50/60 border border-orange-200 rounded-lg p-2.5 text-[11px] space-y-1.5">
+              <span className="font-bold text-orange-950 block text-xs">
+                End of Day Reserve Settlement
+              </span>
+              <div className="flex justify-between text-zinc-600">
+                <span>Safe Cash in Reserve (Remaining):</span>
+                <span className="font-bold text-zinc-800">৳{safeCash.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-zinc-600">
+                <span>Drawer Cash Deposited Tonight:</span>
+                <span className={`font-bold ${isDrawerSaved ? 'text-emerald-700' : 'text-zinc-500'}`}>
+                  {isDrawerSaved 
+                    ? `+৳${session.actualCashCounted.toLocaleString()}` 
+                    : session.actualCashCounted > 0 
+                    ? `৳${session.actualCashCounted.toLocaleString()} (Pending Save)` 
+                    : 'Pending Drawer Count'}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-orange-200 pt-1.5 font-bold text-orange-900">
+                <span>Total Cash Reserve Now:</span>
+                <span className="font-black text-sm text-orange-600">
+                  ৳{(isDrawerSaved ? session.closingSavedCash : (safeCash + (session.actualCashCounted || 0))).toLocaleString()}
+                </span>
+              </div>
+              {!isDrawerSaved && (
+                <span className="text-[10px] text-zinc-500 block pt-0.5">
+                  Counting & saving drawer cash deposits tonight's drawer proceeds into the reserve.
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
       </div>
 
