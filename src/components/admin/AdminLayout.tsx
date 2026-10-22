@@ -22,6 +22,7 @@ import { ExpensesSection } from './ExpensesSection';
 import { CashSettlementSection } from './CashSettlementSection';
 import { AdminLogin } from './AdminLogin';
 import { StaffAccountsModal } from './StaffAccountsModal';
+import { PreviousDayLockAlertModal } from './PreviousDayLockAlertModal';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { supabase, fetchStaffProfiles } from '../../lib/supabase';
 import { 
@@ -94,15 +95,46 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Refs to avoid realtime race conditions and debounce network writes
   const lastLocalEditTimeRef = useRef<number>(0);
   const saveTimeoutRef = useRef<any>(null);
+  const pendingSaveFnRef = useRef<(() => void) | null>(null);
+
+  const flushPendingSaves = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (pendingSaveFnRef.current) {
+      pendingSaveFnRef.current();
+      pendingSaveFnRef.current = null;
+    }
+  };
 
   // Clean up debounced save timer on unmount
   useEffect(() => {
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      flushPendingSaves();
     };
   }, []);
+
+  // Previous Day Unlocked Alert state & detection
+  const [dismissedLockAlertDates, setDismissedLockAlertDates] = useState<Set<string>>(new Set());
+
+  const previousUnlockedDate = useMemo(() => {
+    if (!allDays || !selectedDate) return null;
+    const sortedDates = Object.keys(allDays).sort();
+    const curIdx = sortedDates.indexOf(selectedDate);
+    const priorDates = curIdx >= 0 ? sortedDates.slice(0, curIdx) : sortedDates.filter((d) => d < selectedDate);
+    for (let i = priorDates.length - 1; i >= 0; i--) {
+      const pDate = priorDates[i];
+      const pDay = allDays[pDate];
+      if (pDay && pDay.session) {
+        const isClosedOrLocked = pDay.session.isLocked || pDay.session.status === 'closed';
+        if (!isClosedOrLocked && !dismissedLockAlertDates.has(pDate)) {
+          return pDate;
+        }
+      }
+    }
+    return null;
+  }, [allDays, selectedDate, dismissedLockAlertDates]);
 
   // Sync active tab to sessionStorage
   useEffect(() => {
@@ -399,7 +431,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    saveTimeoutRef.current = setTimeout(() => {
+    const saveFn = () => {
       if (sessionSnapshot) {
         persistSession(sessionSnapshot);
       }
@@ -412,20 +444,32 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
           persistInventoryItems(cd.items);
         });
       }
+    };
+    pendingSaveFnRef.current = saveFn;
+    saveTimeoutRef.current = setTimeout(() => {
+      saveFn();
+      pendingSaveFnRef.current = null;
     }, 600);
   };
 
   // Morning Stock Update Handler
   const handleUpdateMorningItem = (productId: string, morningNewPrepared: number) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    const cleanPrep = Math.max(0, morningNewPrepared);
     const updated = inventoryItems.map((item) => {
       if (item.productId === productId) {
-        const totalAvail = item.morningCarriedOver + morningNewPrepared;
-        const sold = Math.max(0, totalAvail - item.closingUsableLeftover - item.closingWasted);
+        const totalAvail = item.morningCarriedOver + cleanPrep;
+        const cleanRemaining = Math.max(0, Math.min(totalAvail, item.closingUsableLeftover));
+        const maxAllowedWaste = Math.max(0, totalAvail - cleanRemaining);
+        const cleanWaste = Math.max(0, Math.min(maxAllowedWaste, item.closingWasted));
+        const sold = Math.max(0, totalAvail - cleanRemaining - cleanWaste);
         return {
           ...item,
-          morningNewPrepared,
+          morningNewPrepared: cleanPrep,
           totalAvailable: totalAvail,
+          closingUsableLeftover: cleanRemaining,
+          closingWasted: cleanWaste,
+          closingCounted: cleanRemaining + cleanWaste,
           quantitySold: sold,
           estimatedRevenue: sold * item.unitPrice,
         };
@@ -434,7 +478,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     });
 
     recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, morningNewPrepared, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated morning production`);
+    logAudit('inventory', productId, 'UPDATE', 'morningNewPrepared', undefined, cleanPrep, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated morning production`);
   };
 
   // Add New Product to Menu & Session (Persisted to Master Catalog for All Future Days)
@@ -485,34 +529,74 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     const target = inventoryItems.find((item) => item.productId === productId);
     if (!target) return;
 
-    // 1. Delete from current day's daily_inventory in Supabase
-    await deleteInventoryItemFromDB(selectedDate, productId);
+    // 1. Delete from current day and all future days in Supabase
+    await deleteInventoryItemFromDB(selectedDate, productId, true);
 
     // 2. Archive from master products catalog so it NEVER appears in future shifts,
     // while keeping past daily_inventory records & range summaries 100% intact!
     await archiveProductInDB(productId);
 
-    // 3. Remove from current session state and recalculate
-    const updated = inventoryItems.filter((item) => item.productId !== productId);
-    recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('product', productId, 'DELETE', 'isActive', 'active', 'archived', `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Archived product ${target.productName} from menu`);
+    // 3. Remove from state: remove from selectedDate and all future dates (>= selectedDate)
+    setAllDays((prevAll) => {
+      const nextMap = { ...prevAll };
+      Object.keys(nextMap).forEach((d) => {
+        if (d >= selectedDate) {
+          const day = nextMap[d];
+          if (day && day.items.some((i) => i.productId === productId)) {
+            const nextItems = day.items.filter((i) => i.productId !== productId);
+            const totalPrep = nextItems.reduce((s, i) => s + i.totalAvailable, 0);
+            const totalSold = nextItems.reduce((s, i) => s + i.quantitySold, 0);
+            const totalWaste = nextItems.reduce((s, i) => s + i.closingWasted, 0);
+            const grossRev = nextItems.reduce((s, i) => s + i.estimatedRevenue, 0);
+            const netRev = Math.max(0, grossRev - day.session.estimatedDiscounts);
+            const totalExp = day.expenses.reduce((s, e) => s + e.amount, 0);
+            const totalPay = day.payouts.reduce((s, p) => s + p.amount, 0);
+            const khuchra = day.session.khuchraTakenFromReserve || day.session.openingCash || 0;
+            const expCash = Math.max(0, khuchra + netRev - totalExp - totalPay);
+            const updatedSession = {
+              ...day.session,
+              totalProductsPrepared: totalPrep,
+              totalProductsSold: totalSold,
+              totalProductsWasted: totalWaste,
+              grossEstimatedRevenue: grossRev,
+              netEstimatedRevenue: netRev,
+              expectedClosingCash: expCash,
+              cashDifference: day.session.actualCashCounted - expCash,
+            };
+            nextMap[d] = {
+              ...day,
+              items: nextItems,
+              session: updatedSession,
+            };
+            persistSession(updatedSession);
+            persistInventoryItems(nextItems);
+          }
+        }
+      });
+      return nextMap;
+    });
+
+    logAudit('product', productId, 'DELETE', 'isActive', 'active', 'archived', `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Removed product ${target.productName} from menu from ${selectedDate} onwards`);
   };
 
-  // Night Stock Count Handler (Simplified: Sold & Waste)
+  // Night Stock Count Handler (Remaining & Waste)
   const handleUpdateNightCount = (
     productId: string,
-    sold: number,
+    remaining: number,
     waste: number
   ) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
     const updated = inventoryItems.map((item) => {
       if (item.productId === productId) {
-        const reusable = Math.max(0, item.totalAvailable - sold - waste);
+        const cleanRemaining = Math.max(0, Math.min(item.totalAvailable, remaining));
+        const maxAllowedWaste = Math.max(0, item.totalAvailable - cleanRemaining);
+        const cleanWaste = Math.max(0, Math.min(maxAllowedWaste, waste));
+        const sold = Math.max(0, item.totalAvailable - cleanRemaining - cleanWaste);
         return {
           ...item,
-          closingUsableLeftover: reusable,
-          closingWasted: waste,
-          closingCounted: reusable + waste,
+          closingUsableLeftover: cleanRemaining,
+          closingWasted: cleanWaste,
+          closingCounted: cleanRemaining + cleanWaste,
           quantitySold: sold,
           estimatedRevenue: sold * item.unitPrice,
         };
@@ -521,7 +605,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     });
 
     recalculateSession(updated, expenses, payouts, activeDay.session.estimatedDiscounts, activeDay.session.actualCashCounted);
-    logAudit('inventory', productId, 'UPDATE', 'nightCount', undefined, `${sold} sold, ${waste} waste`, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated closing counts`);
+    logAudit('inventory', productId, 'UPDATE', 'nightCount', undefined, `${remaining} remaining, ${waste} waste`, `${activeDay.session.isLocked ? '[Super Admin Override] ' : ''}Updated closing counts`);
   };
 
   // Discounts Update
@@ -538,9 +622,16 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Expense Handlers
   const handleAddExpense = (newExp: Omit<DailyExpense, 'id' | 'createdAt'>) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
     const created: DailyExpense = {
       ...newExp,
-      id: `exp-${Date.now()}`,
+      id: newId,
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     persistExpense(created);
@@ -562,9 +653,16 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   // Payout Handlers
   const handleAddPayout = (newPayout: Omit<DailyPayout, 'id' | 'createdAt'>) => {
     if (!activeDay || (activeDay.session.isLocked && !isSuperAdmin)) return;
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
     const created: DailyPayout = {
       ...newPayout,
-      id: `pay-${Date.now()}`,
+      id: newId,
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     persistPayout(created);
@@ -674,6 +772,36 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     logAudit('session', selectedDate, nextLocked ? 'LOCK' : 'UNLOCK', 'isLocked', activeDay.session.isLocked ? 'locked' : 'unlocked', nextLocked ? 'locked' : 'unlocked', `${nextLocked ? 'Locked' : 'Unlocked'} day session`);
   };
 
+  const handleLockPreviousDateNow = (dateToLock: string) => {
+    updateSessionLock(dateToLock, true);
+    setAllDays((prevAll) => {
+      const cur = prevAll[dateToLock];
+      if (!cur) return prevAll;
+      const updatedSession: DailySession = {
+        ...cur.session,
+        isLocked: true,
+        status: 'closed',
+        closedAt: new Date().toISOString(),
+      };
+      persistSession(updatedSession);
+
+      const initialMap = {
+        ...prevAll,
+        [dateToLock]: { ...cur, session: updatedSession },
+      };
+
+      const { updatedDays, changedDays } = cascadeInventoryCarryover(initialMap, dateToLock);
+      if (changedDays.length > 0) {
+        changedDays.forEach((cd) => {
+          persistSession(cd.session);
+          persistInventoryItems(cd.items);
+        });
+      }
+      return updatedDays;
+    });
+    logAudit('session', dateToLock, 'LOCK', 'isLocked', 'unlocked', 'locked', 'Locked previous day shift via lock alert');
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans selection:bg-zinc-900 selection:text-white">
       
@@ -746,7 +874,10 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             expenses={expenses}
             payouts={payouts}
             selectedDate={selectedDate}
-            onSelectDate={(date) => setSelectedDate(date)}
+            onSelectDate={(date) => {
+              flushPendingSaves();
+              setSelectedDate(date);
+            }}
             onNavigateTab={(tab) => setActiveTab(tab)}
             onToggleLock={handleToggleLock}
             onStartShift={handleStartShift}
@@ -1011,6 +1142,24 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Previous Day Shift Unlocked Bangla Modal */}
+      {previousUnlockedDate && (
+        <PreviousDayLockAlertModal
+          isOpen={Boolean(previousUnlockedDate)}
+          unlockedDate={previousUnlockedDate}
+          onGoToDate={(date) => {
+            flushPendingSaves();
+            setSelectedDate(date);
+          }}
+          onLockNow={(date) => {
+            handleLockPreviousDateNow(date);
+          }}
+          onDismiss={() => {
+            setDismissedLockAlertDates((prev) => new Set([...prev, previousUnlockedDate]));
+          }}
+        />
       )}
 
     </div>

@@ -5,7 +5,12 @@ export interface AggregatedAnalyticsResult {
   calcStartDate: string;
   calcEndDate: string;
   days: number;
+  operatingDaysCount: number;
   isSalesLocked: boolean;
+  lockedDaysCount: number;
+  openDaysCount: number;
+  lockedNetSales: number;
+  lockedNetProfit: number;
   grossSales: number;
   discounts: number;
   netSales: number;
@@ -192,10 +197,15 @@ export function calculateAggregatedAnalytics({
     });
   }
 
+  // Operating days count: days where the cart had activity (prep, sales, expenses, payouts)
+  const operatingDaysCount = sortedRange.length > 0
+    ? sortedRange.filter((d) => d.items.some((i) => i.totalAvailable > 0) || d.session.netEstimatedRevenue > 0 || d.expenses.length > 0 || d.payouts.length > 0).length || 1
+    : 1;
+
   const netProfit = netSales - totalExp - totalPay;
   const profitMargin = netSales > 0 ? Math.round((netProfit / netSales) * 1000) / 10 : 0;
-  const avgDailySales = Math.round(netSales / days);
-  const avgDailyProfit = Math.round(netProfit / days);
+  const avgDailySales = Math.round(netSales / operatingDaysCount);
+  const avgDailyProfit = Math.round(netProfit / operatingDaysCount);
 
   // Products list
   const products = Object.values(productMap).sort((a, b) => b.revenue - a.revenue);
@@ -213,8 +223,38 @@ export function calculateAggregatedAnalytics({
   // Payouts list
   const aggregatedPayouts = Object.values(payoutMap).sort((a, b) => b.amount - a.amount);
 
-  // Closing cash reserve for latest day in range
-  let closingReserve = fallbackSession?.closingSavedCash || 21000;
+  // Locked days vs Open days breakdown
+  let lockedDaysCount = 0;
+  let openDaysCount = 0;
+  let lockedNetSales = 0;
+  let lockedNetProfit = 0;
+
+  if (sortedRange.length > 0) {
+    sortedRange.forEach((d) => {
+      if (d.session.isLocked) {
+        lockedDaysCount++;
+        const dGross = d.items.reduce((s, i) => s + i.estimatedRevenue, 0);
+        const dNet = Math.max(0, dGross - (d.session.estimatedDiscounts || 0));
+        const dExp = d.expenses.reduce((s, e) => s + e.amount, 0);
+        const dPay = d.payouts.reduce((s, p) => s + p.amount, 0);
+        lockedNetSales += dNet;
+        lockedNetProfit += (dNet - dExp - dPay);
+      } else {
+        openDaysCount++;
+      }
+    });
+  } else if (fallbackSession) {
+    if (fallbackSession.isLocked) {
+      lockedDaysCount = 1;
+      lockedNetSales = netSales;
+      lockedNetProfit = netProfit;
+    } else {
+      openDaysCount = 1;
+    }
+  }
+
+  // Closing cash reserve for latest day in range (defaults to 0, not 21000)
+  let closingReserve = fallbackSession?.closingSavedCash ?? 0;
   if (sortedRange.length > 0) {
     const latestDay = sortedRange[sortedRange.length - 1];
     const isSaved = (latestDay.session.transferredToReserve || 0) > 0;
@@ -237,7 +277,12 @@ export function calculateAggregatedAnalytics({
     calcStartDate,
     calcEndDate,
     days,
+    operatingDaysCount,
     isSalesLocked,
+    lockedDaysCount,
+    openDaysCount,
+    lockedNetSales,
+    lockedNetProfit,
     grossSales,
     discounts,
     netSales,

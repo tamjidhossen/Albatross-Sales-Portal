@@ -9,7 +9,7 @@ interface NightClosingSectionProps {
   estimatedDiscounts: number;
   onUpdateNightCount: (
     productId: string, 
-    sold: number, 
+    remaining: number, 
     waste: number
   ) => void;
   onUpdateDiscounts: (discounts: number) => void;
@@ -138,25 +138,28 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                 </div>
               </div>
 
-              {/* Inputs: Sold & Waste (Compact Side-by-Side) */}
+              {/* Inputs: Remaining & Waste (Closing Inventory Physical Counts) */}
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-100">
                 
-                {/* Sold Pieces */}
+                {/* Remaining Pieces (Leftover for tomorrow) */}
                 <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-1.5">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[10px] text-zinc-600 font-bold">Sold (pcs)</span>
+                    <span className="text-[10px] text-zinc-700 font-bold">Remaining (pcs)</span>
+                    <span className="text-[9px] text-zinc-400">max {item.totalAvailable}</span>
                   </div>
                   <input
                     type="number"
                     min="0"
                     max={item.totalAvailable}
                     disabled={isLocked}
-                    value={item.quantitySold === 0 ? '' : item.quantitySold}
+                    value={item.closingUsableLeftover === 0 ? '' : item.closingUsableLeftover}
                     placeholder="0"
                     onChange={(e) => {
                       const val = e.target.value;
-                      const soldVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
-                      onUpdateNightCount(item.productId, soldVal, item.closingWasted);
+                      const rawRemaining = val === '' ? 0 : parseInt(val, 10);
+                      const cleanRemaining = isNaN(rawRemaining) ? 0 : Math.max(0, Math.min(item.totalAvailable, rawRemaining));
+                      const cleanWaste = Math.min(item.closingWasted, item.totalAvailable - cleanRemaining);
+                      onUpdateNightCount(item.productId, cleanRemaining, cleanWaste);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
@@ -165,19 +168,22 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
                 {/* Wasted Pieces */}
                 <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-1.5">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[10px] text-zinc-600 font-bold">Waste (pcs)</span>
+                    <span className="text-[10px] text-zinc-700 font-bold">Waste (pcs)</span>
+                    <span className="text-[9px] text-zinc-400">max {Math.max(0, item.totalAvailable - item.closingUsableLeftover)}</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    max={item.totalAvailable}
+                    max={Math.max(0, item.totalAvailable - item.closingUsableLeftover)}
                     disabled={isLocked}
                     value={item.closingWasted === 0 ? '' : item.closingWasted}
                     placeholder="0"
                     onChange={(e) => {
                       const val = e.target.value;
-                      const wasteVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
-                      onUpdateNightCount(item.productId, item.quantitySold, wasteVal);
+                      const rawWaste = val === '' ? 0 : parseInt(val, 10);
+                      const maxAllowedWaste = Math.max(0, item.totalAvailable - item.closingUsableLeftover);
+                      const cleanWaste = isNaN(rawWaste) ? 0 : Math.max(0, Math.min(maxAllowedWaste, rawWaste));
+                      onUpdateNightCount(item.productId, item.closingUsableLeftover, cleanWaste);
                     }}
                     className="w-full h-7 rounded bg-white border border-zinc-300 text-center font-bold text-sm text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
                   />
@@ -185,11 +191,13 @@ export const NightClosingSection: React.FC<NightClosingSectionProps> = ({
 
               </div>
 
-              {/* Derived Auto Reusable Status */}
-              <div className="flex items-center justify-between text-[10px] bg-zinc-50 px-2 py-1 rounded-md border border-zinc-100">
-                <span className="text-zinc-500">Reusable for tomorrow:</span>
-                <span className={`font-bold ${leftoverTomorrow > 0 ? 'text-emerald-700' : 'text-zinc-500'}`}>
-                  {leftoverTomorrow} pcs leftover
+              {/* Calculated Sold & Tomorrow Carryover Status */}
+              <div className="flex items-center justify-between text-[10px] bg-zinc-50 px-2 py-1.5 rounded-md border border-zinc-100">
+                <span className="font-semibold text-emerald-800">
+                  Sold: <strong className="text-emerald-700 font-bold text-xs">{item.quantitySold} pcs</strong>
+                </span>
+                <span className="font-medium text-zinc-500">
+                  Rolls into tomorrow: <strong className="text-zinc-700 font-bold">{item.closingUsableLeftover} pcs</strong>
                 </span>
               </div>
 

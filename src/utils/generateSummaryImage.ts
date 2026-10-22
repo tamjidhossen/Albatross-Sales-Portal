@@ -333,7 +333,7 @@ export function downloadClosingStockSlip({
     ctx.fillText(subtitle, x + 8, y + 51);
   };
 
-  drawCard(24, 'NET FOOD SALES', `৳${netSales.toLocaleString()}`, `${totalSold} items sold`, '#059669');
+  drawCard(24, 'NET FOOD SALES', isLocked ? `৳${netSales.toLocaleString()}` : '[Pending Lock]', isLocked ? `${totalSold} items sold` : 'Locks at closing', '#059669');
   drawCard(24 + (cardWidth + cardSpacing), 'ITEMS SOLD', `${totalSold} pcs`, `Of ${totalLoaded} loaded`, '#0F172A');
   drawCard(24 + (cardWidth + cardSpacing) * 2, 'LEFTOVER TOMORROW', `${totalUsable} pcs`, 'Usable stock', '#475569');
   drawCard(24 + (cardWidth + cardSpacing) * 3, 'ITEMS WASTED', `${totalWaste} pcs`, 'Spoiled/lost', totalWaste > 0 ? '#DC2626' : '#94A3B8');
@@ -391,12 +391,12 @@ export function downloadClosingStockSlip({
     ctx.fillText(`${item.closingWasted}`, 470, y + 18);
 
     ctx.fillStyle = '#64748B';
-    ctx.fillText(`৳${item.unitPrice}`, 530, y + 18);
+    ctx.fillText(isLocked ? `৳${item.unitPrice}` : '—', 530, y + 18);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#059669';
     ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-    ctx.fillText(`৳${item.estimatedRevenue.toLocaleString()}`, width - 36, y + 18);
+    ctx.fillText(isLocked ? `৳${item.estimatedRevenue.toLocaleString()}` : '[Pending]', width - 36, y + 18);
     ctx.textAlign = 'left';
 
     y += rowHeight;
@@ -422,7 +422,7 @@ export function downloadClosingStockSlip({
 
   ctx.textAlign = 'right';
   ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`৳${grossSales.toLocaleString()}`, width - 36, y + 18);
+  ctx.fillText(isLocked ? `৳${grossSales.toLocaleString()}` : '[Pending Lock]', width - 36, y + 18);
   ctx.textAlign = 'left';
 
   y += 38;
@@ -437,8 +437,8 @@ export function downloadClosingStockSlip({
 
   ctx.fillStyle = '#475569';
   ctx.font = '11px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`Gross Sales: ৳${grossSales.toLocaleString()}`, 36, y + 23);
-  if (estimatedDiscounts > 0) {
+  ctx.fillText(isLocked ? `Gross Sales: ৳${grossSales.toLocaleString()}` : 'Gross Sales: [Pending Lock]', 36, y + 23);
+  if (estimatedDiscounts > 0 && isLocked) {
     ctx.fillStyle = '#D97706';
     ctx.fillText(`Discounts Given: −৳${estimatedDiscounts.toLocaleString()}`, 250, y + 23);
   }
@@ -446,7 +446,7 @@ export function downloadClosingStockSlip({
   ctx.textAlign = 'right';
   ctx.fillStyle = '#059669';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`Net Food Sales: ৳${netSales.toLocaleString()}`, width - 36, y + 23);
+  ctx.fillText(isLocked ? `Net Food Sales: ৳${netSales.toLocaleString()}` : 'Net Food Sales: [Pending Lock]', width - 36, y + 23);
   ctx.textAlign = 'left';
 
   y += 50;
@@ -658,7 +658,7 @@ export function downloadCashSettlementSlip({
   };
 
   drawRow('Khuchra Cash (Taken for Cart Opening):', `+৳${khuchra.toLocaleString()}`, y + 54, '#64748B');
-  drawRow('Net Food Sales Revenue:', `+৳${session.netEstimatedRevenue.toLocaleString()}`, y + 78, '#059669', true);
+  drawRow('Net Food Sales Revenue:', session.isLocked ? `+৳${session.netEstimatedRevenue.toLocaleString()}` : '[Pending Lock]', y + 78, '#059669', true);
   drawRow('Bazaar Expenses Paid from Drawer:', `−৳${session.totalExpenses.toLocaleString()}`, y + 102, '#DC2626');
   drawRow('Staff / Owner Payouts Taken from Drawer:', `−৳${session.totalPayouts.toLocaleString()}`, y + 126, '#DC2626');
 

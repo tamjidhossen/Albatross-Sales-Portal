@@ -40,10 +40,10 @@ export const mapSessionFromDB = (row: any): DailySession => {
   const netRev = Number(row.net_estimated_revenue) || 0;
   const totalExp = Number(row.total_expenses) || 0;
   const totalPay = Number(row.total_payouts) || 0;
-  const dynamicExpected = khuchra + netRev - totalExp - totalPay;
+  const dynamicExpected = Math.max(0, khuchra + netRev - totalExp - totalPay);
   const cleanExpected = row.status === 'open' && !Boolean(row.is_locked)
     ? dynamicExpected
-    : rawExpected;
+    : Math.max(0, rawExpected);
   const cleanCashDiff = row.status === 'open' && !Boolean(row.is_locked)
     ? cleanActualCash - cleanExpected
     : (Number(row.cash_difference) || 0);
@@ -159,7 +159,7 @@ export const mapExpenseFromDB = (row: any): DailyExpense => ({
 });
 
 export const mapExpenseToDB = (exp: DailyExpense) => ({
-  id: exp.id.includes('-') && exp.id.length > 20 ? exp.id : undefined,
+  id: exp.id && exp.id.length >= 32 && !exp.id.startsWith('exp-') ? exp.id : undefined,
   session_date: exp.sessionDate,
   category: exp.category,
   item_name: exp.itemName,
@@ -179,7 +179,7 @@ export const mapPayoutFromDB = (row: any): DailyPayout => ({
 });
 
 export const mapPayoutToDB = (p: DailyPayout) => ({
-  id: p.id.includes('-') && p.id.length > 20 ? p.id : undefined,
+  id: p.id && p.id.length >= 32 && !p.id.startsWith('pay-') ? p.id : undefined,
   session_date: p.sessionDate,
   recipient_name: p.recipientName,
   amount: p.amount,
@@ -418,7 +418,7 @@ export const cascadeInventoryCarryover = (
           // (reusable === 0 && waste === 0), sold defaults to the new total available!
           const isDefaultCount = !nextDay.session.isLocked && nextItem.closingUsableLeftover === 0 && nextItem.closingWasted === 0;
           const sold = isDefaultCount ? newTotalAvail : Math.min(newTotalAvail, nextItem.quantitySold);
-          const waste = nextItem.closingWasted;
+          const waste = Math.max(0, Math.min(newTotalAvail - sold, nextItem.closingWasted));
           const reusable = Math.max(0, newTotalAvail - sold - waste);
           return {
             ...nextItem,
@@ -477,7 +477,7 @@ export const cascadeInventoryCarryover = (
       const totalExp = nextDay.expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalPay = nextDay.payouts.reduce((sum, p) => sum + p.amount, 0);
       const khuchra = nextSession.khuchraTakenFromReserve || nextSession.openingCash || 0;
-      const expectedCash = khuchra + netRevenue - totalExp - totalPay;
+      const expectedCash = Math.max(0, khuchra + netRevenue - totalExp - totalPay);
 
       const finalNextSession: DailySession = {
         ...nextSession,
@@ -613,7 +613,7 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
           const khuchra = dayData.session.khuchraTakenFromReserve || dayData.session.openingCash || 0;
           const totalExp = dayData.expenses.reduce((s, e) => s + e.amount, 0);
           const totalPay = dayData.payouts.reduce((s, p) => s + p.amount, 0);
-          const expCash = khuchra + netRev - totalExp - totalPay;
+          const expCash = Math.max(0, khuchra + netRev - totalExp - totalPay);
 
           dayData.session.totalProductsPrepared = dayData.items.reduce((s, i) => s + i.totalAvailable, 0);
           dayData.session.totalProductsSold = totalSold;
@@ -834,16 +834,23 @@ export const deleteExpenseFromDB = async (expenseId: string): Promise<void> => {
   }
 };
 
-export const deleteInventoryItemFromDB = async (sessionDate: string, productId: string): Promise<void> => {
+export const deleteInventoryItemFromDB = async (sessionDate: string, productId: string, allFuture: boolean = false): Promise<void> => {
   addArchivedProductId(productId);
   removeCustomProduct(productId);
   if (!isSupabaseConfigured()) return;
   try {
-    const { error } = await supabase
+    let query = supabase
       .from('daily_inventory')
       .delete()
-      .eq('session_date', sessionDate)
       .eq('product_id', productId);
+
+    if (allFuture) {
+      query = query.gte('session_date', sessionDate);
+    } else {
+      query = query.eq('session_date', sessionDate);
+    }
+
+    const { error } = await query;
     if (error) {
       console.warn('Supabase daily_inventory delete warning (may require RLS delete policy):', error.message);
     }

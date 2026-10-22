@@ -506,6 +506,15 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 </span>
                 <span className="text-[9px] text-emerald-600 font-medium">{analyticsData.totalSold} items sold</span>
               </>
+            ) : analyticsData.days > 1 && analyticsData.lockedDaysCount > 0 ? (
+              <>
+                <span className="text-sm font-extrabold text-zinc-900 block mt-0.5">
+                  ৳{analyticsData.lockedNetSales.toLocaleString()}
+                </span>
+                <span className="text-[9px] text-amber-700 font-medium block">
+                  {analyticsData.lockedDaysCount} days locked • Today pending
+                </span>
+              </>
             ) : (
               <>
                 <div className="flex items-center gap-1 mt-1">
@@ -545,6 +554,13 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                   ৳{analyticsData.netProfit.toLocaleString()}
                 </span>
                 <span className="text-[9px] text-orange-700 font-medium">Margin: {analyticsData.profitMargin}%</span>
+              </>
+            ) : analyticsData.days > 1 && analyticsData.lockedDaysCount > 0 ? (
+              <>
+                <span className="text-sm font-black text-orange-600 block mt-0.5">
+                  ৳{analyticsData.lockedNetProfit.toLocaleString()}
+                </span>
+                <span className="text-[9px] text-orange-700 font-medium">From locked days</span>
               </>
             ) : (
               <>

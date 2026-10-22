@@ -70,8 +70,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   const [khuchraInput, setKhuchraInput] = useState(khuchraVal === 0 ? '' : khuchraVal.toString());
 
   // Closing drawer cash state (defaults to 0 for uncounted shifts)
-  const isUncounted = (!session.transferredToReserve || session.transferredToReserve === 0) || session.actualCashCounted === 0 || session.actualCashCounted === 1000 || session.actualCashCounted === session.openingCash;
-  const initialDrawerVal = isUncounted ? '0' : session.actualCashCounted.toString();
+  const initialDrawerVal = (session.actualCashCounted ?? 0).toString();
   const [closingDrawerInput, setClosingDrawerInput] = useState(initialDrawerVal);
   const [isSavedDrawer, setIsSavedDrawer] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -79,18 +78,19 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
   // Sync inputs if selected date or underlying session data updates
   useEffect(() => {
-    const uncounted = (!session.transferredToReserve || session.transferredToReserve === 0) || session.actualCashCounted === 0 || session.actualCashCounted === 1000 || session.actualCashCounted === session.openingCash;
-    setClosingDrawerInput(uncounted ? '0' : session.actualCashCounted.toString());
-  }, [session.sessionDate, session.actualCashCounted, session.status, session.openingCash, session.transferredToReserve]);
+    setClosingDrawerInput((session.actualCashCounted ?? 0).toString());
+  }, [session.sessionDate, session.actualCashCounted]);
 
   useEffect(() => {
     const kVal = session.khuchraTakenFromReserve || session.openingCash || 0;
     setKhuchraInput(kVal === 0 ? '' : kVal.toString());
   }, [session.sessionDate, session.khuchraTakenFromReserve, session.openingCash]);
 
-  const expectedClosingCash = khuchraVal + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
+  const rawExpectedClosingCash = khuchraVal + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
+  const isNegativeExpected = rawExpectedClosingCash < 0;
+  const expectedClosingCash = Math.max(0, rawExpectedClosingCash);
   const currentDiff = session.actualCashCounted - expectedClosingCash;
-  const isMatch = currentDiff === 0;
+  const isMatch = currentDiff === 0 && !isNegativeExpected;
   const isShortage = currentDiff < 0;
   const isEditable = !session.isLocked || isSuperAdmin;
 
@@ -396,6 +396,19 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </div>
         </div>
 
+        {/* Warning if expenses exceeded cash in drawer */}
+        {isNegativeExpected && (
+          <div className="bg-red-50 border border-red-300 rounded-lg p-2.5 text-xs text-red-900 flex items-start gap-2 font-medium">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">⚠️ সতর্কতা: খরচ মোট ড্রয়ার ক্যাশ অতিক্রম করেছে!</span>
+              <span className="text-[11px] text-red-700 block mt-0.5">
+                বাজার খরচ ও পেআউট (৳{(session.totalExpenses + session.totalPayouts).toLocaleString()}) মোট ড্রয়ার সংগ্রহ (৳{(khuchraVal + session.netEstimatedRevenue).toLocaleString()}) থেকে ৳{Math.abs(rawExpectedClosingCash).toLocaleString()} বেশি হয়েছে। ড্রয়ার প্রত্যাশিত ক্যাশ ৳০ তে সীমাবদ্ধ রাখা হয়েছে।
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Closing Drawer Cash Input & Save Button */}
         <form onSubmit={handleSaveDrawerSubmit} className="bg-zinc-50 rounded-lg p-2.5 border border-zinc-200 space-y-2">
           <label className="block text-xs font-bold text-zinc-800">
@@ -503,11 +516,6 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                   ৳{(isDrawerSaved ? session.closingSavedCash : (safeCash + (session.actualCashCounted || 0))).toLocaleString()}
                 </span>
               </div>
-              {!isDrawerSaved && (
-                <span className="text-[10px] text-zinc-500 block pt-0.5">
-                  Counting & saving drawer cash deposits tonight's drawer proceeds into the reserve.
-                </span>
-              )}
             </div>
           );
         })()}

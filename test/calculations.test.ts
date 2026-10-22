@@ -162,5 +162,53 @@ describe('Financial Math & Settlement Engine', () => {
       'cashDifference must match actual cash (0) - expected cash (7310)'
     );
   });
+
+  it('clamps expected closing drawer cash to 0 when expenses exceed cash and avoids false surplus', () => {
+    const khuchra = 1000;
+    const netFoodSales = 0; // Rain out
+    const bazaarExpenses = 2500;
+    const payouts = 0;
+
+    const rawExpected = khuchra + netFoodSales - bazaarExpenses - payouts; // -1500
+    assert.strictEqual(rawExpected, -1500);
+
+    const clampedExpected = Math.max(0, rawExpected);
+    assert.strictEqual(clampedExpected, 0, 'Expected closing drawer cash must never be negative');
+
+    // Drawer counted 0 at night: diff must be 0, NOT +1500 fake surplus
+    const actualCounted = 0;
+    const diff = actualCounted - clampedExpected;
+    assert.strictEqual(diff, 0, 'Must not claim a +1,500 cash surplus');
+  });
+
+  it('correctly calculates Sold and enforces clamping for Remaining and Waste', () => {
+    const totalAvailable = 20;
+
+    // Case 1: Default uncounted state (Remaining = 0, Waste = 0) -> Sold = 20
+    let remaining = 0;
+    let waste = 0;
+    let sold = Math.max(0, totalAvailable - remaining - waste);
+    assert.strictEqual(sold, 20, 'Default sold must be equal to totalAvailable');
+
+    // Case 2: User enters Remaining = 5, Waste = 2 -> Sold = 13
+    remaining = 5;
+    waste = 2;
+    sold = Math.max(0, totalAvailable - remaining - waste);
+    assert.strictEqual(sold, 13);
+
+    // Case 3: Over-entry clamping for Remaining (typed 25 on 20 available)
+    const rawRemaining = 25;
+    const cleanRemaining = Math.max(0, Math.min(totalAvailable, rawRemaining));
+    assert.strictEqual(cleanRemaining, 20, 'Remaining must clamp to totalAvailable');
+
+    // Case 4: Over-entry clamping for Waste (20 available, 18 remaining, user typed 5 waste)
+    remaining = 18;
+    const rawWaste = 5;
+    const maxAllowedWaste = Math.max(0, totalAvailable - remaining); // 2
+    const cleanWaste = Math.max(0, Math.min(maxAllowedWaste, rawWaste));
+    assert.strictEqual(cleanWaste, 2, 'Waste must clamp to available - remaining');
+    sold = Math.max(0, totalAvailable - remaining - cleanWaste);
+    assert.strictEqual(sold, 0, 'Sold cannot drop below 0');
+  });
 });
 

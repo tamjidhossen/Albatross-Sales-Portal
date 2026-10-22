@@ -29,19 +29,6 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   const [itemName, setItemName] = useState('');
   const [amount, setAmount] = useState('');
   
-  const availablePayers = useMemo(() => {
-    const list = ['Cart Drawer Cash'];
-    if (staffNames && staffNames.length > 0) {
-      staffNames.forEach((n) => list.push(n));
-    } else {
-      list.push('Tamjid');
-    }
-    list.push('Other Person');
-    return list;
-  }, [staffNames]);
-
-  const [paidByName, setPaidByName] = useState(availablePayers[0] || 'Cart Drawer Cash');
-  const [customPayer, setCustomPayer] = useState('');
   const [notes, setNotes] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -53,20 +40,18 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
     if (isNaN(parsedAmount) || parsedAmount <= 0) return;
 
     const finalItemName = itemName.trim() || category;
-    const finalPayer = paidByName === 'Other Person' ? (customPayer.trim() || 'Other Person') : paidByName;
 
     onAddExpense({
-      sessionDate: expenses[0]?.sessionDate || new Date().toISOString().slice(0, 10),
+      sessionDate: sessionDate || expenses[0]?.sessionDate || new Date().toISOString().slice(0, 10),
       category,
       itemName: finalItemName,
       amount: parsedAmount,
-      paidByName: finalPayer,
+      paidByName: 'Cart Drawer Cash',
       notes: notes || undefined,
     });
 
     setItemName('');
     setAmount('');
-    setCustomPayer('');
     setNotes('');
     setIsAdding(false);
   };
@@ -196,59 +181,26 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
               />
             </div>
 
-            {/* Amount & Paid By */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-600 mb-1">
+            {/* Amount */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-semibold text-zinc-600">
                   Amount (৳)
                 </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="e.g. 450"
-                  className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 shadow-2xs transition"
-                />
+                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                  Paid from Cart Drawer Cash
+                </span>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-600 mb-1">
-                  Paid By
-                </label>
-                <div className="relative">
-                  <select
-                    value={paidByName}
-                    onChange={(e) => setPaidByName(e.target.value)}
-                    className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 pr-8 text-xs font-semibold text-zinc-800 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 appearance-none shadow-2xs cursor-pointer transition"
-                  >
-                    {availablePayers.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              </div>
+              <input
+                type="number"
+                required
+                min="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="e.g. 450"
+                className="w-full h-8 rounded-lg bg-white border border-zinc-300 hover:border-zinc-400 px-2.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 shadow-2xs transition"
+              />
             </div>
-
-            {paidByName === 'Other Person' && (
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-600 mb-0.5">
-                  Enter Payer Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Delivery Partner"
-                  value={customPayer}
-                  onChange={(e) => setCustomPayer(e.target.value)}
-                  className="w-full h-8 rounded-lg bg-white border border-zinc-300 px-2.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                />
-              </div>
-            )}
           </div>
 
           <div className="flex gap-2 pt-1">

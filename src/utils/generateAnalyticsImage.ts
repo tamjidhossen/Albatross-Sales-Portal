@@ -3,7 +3,11 @@ export interface AnalyticsReportData {
   endDate: string;
   days: number;
   presetLabel: string;
+  operatingDaysCount?: number;
   isSalesLocked?: boolean;
+  lockedDaysCount?: number;
+  lockedNetSales?: number;
+  lockedNetProfit?: number;
   // Financials
   grossSales: number;
   discounts: number;
@@ -131,15 +135,19 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
     ctx.fillText(subtitle, x + 8, y + 54);
   };
 
-  if (data.isSalesLocked === false) {
+  if (data.isSalesLocked === false && (!data.lockedDaysCount || data.days === 1)) {
     drawSummaryCard(xMargin, 'NET SALES', 'Pending Lock', 'Locks at closing', '#FFFBEB', '#FDE68A', '#D97706');
+  } else if (data.isSalesLocked === false && data.lockedDaysCount && data.days > 1) {
+    drawSummaryCard(xMargin, 'NET SALES', `৳${(data.lockedNetSales || 0).toLocaleString()}`, `${data.lockedDaysCount} locked (today pending)`, '#F8FAFC', '#E2E8F0', '#0F172A');
   } else {
     drawSummaryCard(xMargin, 'NET SALES', `৳${data.netSales.toLocaleString()}`, `${data.totalSold} sold`, '#F8FAFC', '#E2E8F0', '#0F172A');
   }
   drawSummaryCard(xMargin + cardWidth + cardSpacing, 'BAZAAR EXP', `৳${data.totalExp.toLocaleString()}`, 'Supplies', '#F8FAFC', '#E2E8F0', '#DC2626');
   drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 2, 'PAYOUTS', `৳${data.totalPay.toLocaleString()}`, 'Staff & owner', '#F8FAFC', '#E2E8F0', '#DC2626');
-  if (data.isSalesLocked === false) {
+  if (data.isSalesLocked === false && (!data.lockedDaysCount || data.days === 1)) {
     drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', 'Pending Lock', 'Calculates after lock', '#FFFBEB', '#FDE68A', '#D97706');
+  } else if (data.isSalesLocked === false && data.lockedDaysCount && data.days > 1) {
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${(data.lockedNetProfit || 0).toLocaleString()}`, 'From locked days', '#FFF7ED', '#FDBA74', '#EA4300');
   } else {
     drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${data.netProfit.toLocaleString()}`, `Margin: ${data.profitMargin}%`, '#FFF7ED', '#FDBA74', '#EA4300');
   }
