@@ -93,6 +93,34 @@ function triggerDownload(canvas: HTMLCanvasElement, filename: string) {
   link.click();
 }
 
+// Helper to parse and compact timestamps for slip tables (prevents column overlap)
+export function formatSlipTime(val?: string): string {
+  if (!val) return '—';
+  const trimmed = val.trim();
+  // If already a short time string like "10:30 PM", "10:30 AM", "10:30"
+  if (/^\d{1,2}:\d{2}(\s*[AaPp][Mm])?$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try parsing Date / ISO string
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+
+  // Fallback: search for HH:MM pattern
+  const match = trimmed.match(/(\d{1,2}):(\d{2})/);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+  }
+
+  return trimmed.length > 8 ? trimmed.slice(0, 8) : trimmed;
+}
+
 // -------------------------------------------------------------
 // 1. OPENING STOCK SLIP
 // -------------------------------------------------------------
@@ -532,7 +560,7 @@ export function downloadExpensesSlip({
   ctx.fillStyle = '#475569';
   ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
   ctx.fillText('TIME', 36, y + 16);
-  ctx.fillText('EXPENSE ITEM', 110, y + 16);
+  ctx.fillText('EXPENSE ITEM', 115, y + 16);
   ctx.textAlign = 'center';
   ctx.fillText('CATEGORY', 340, y + 16);
   ctx.fillText('PURCHASED BY', 470, y + 16);
@@ -556,13 +584,14 @@ export function downloadExpensesSlip({
       ctx.fillStyle = index % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
       ctx.fillRect(24, y, contentWidth, rowHeight);
 
+      const timeStr = formatSlipTime(exp.createdAt);
       ctx.fillStyle = '#64748B';
-      ctx.font = '11px system-ui, -apple-system, sans-serif';
-      ctx.fillText(exp.createdAt || '—', 36, y + 17);
+      ctx.font = '10px system-ui, -apple-system, sans-serif';
+      ctx.fillText(timeStr, 36, y + 17);
 
       ctx.fillStyle = '#0F172A';
       ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-      ctx.fillText(exp.itemName.length > 28 ? exp.itemName.slice(0, 26) + '...' : exp.itemName, 110, y + 17);
+      ctx.fillText(exp.itemName.length > 28 ? exp.itemName.slice(0, 26) + '...' : exp.itemName, 115, y + 17);
 
       ctx.textAlign = 'center';
       ctx.fillStyle = '#475569';
@@ -720,9 +749,10 @@ export function downloadCashSettlementSlip({
       ctx.fillStyle = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
       ctx.fillRect(24, y, contentWidth, 24);
 
+      const timeStr = formatSlipTime(p.createdAt);
       ctx.fillStyle = '#64748B';
-      ctx.font = '11px system-ui, -apple-system, sans-serif';
-      ctx.fillText(p.createdAt || '—', 36, y + 16);
+      ctx.font = '10px system-ui, -apple-system, sans-serif';
+      ctx.fillText(timeStr, 36, y + 16);
 
       ctx.fillStyle = '#0F172A';
       ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
