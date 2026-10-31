@@ -63,6 +63,14 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
   const todayStr = useMemo(() => getTodayDateString(), []);
   const isViewingToday = selectedDate === todayStr;
 
+  const openingStockAmount = useMemo(() => {
+    return items.reduce((sum, item) => sum + ((item.totalAvailable || 0) * (item.unitPrice || 0)), 0);
+  }, [items]);
+
+  const closingLeftoverAmount = useMemo(() => {
+    return items.reduce((sum, item) => sum + ((item.closingUsableLeftover || 0) * (item.unitPrice || 0)), 0);
+  }, [items]);
+
   // Format date display (e.g. 19 Oct 2026, Mon)
   const formattedDate = useMemo(() => {
     try {
@@ -168,6 +176,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         totalPrepared: analyticsData.totalPrepared,
         totalSold: analyticsData.totalSold,
         totalWaste: analyticsData.totalWaste,
+        costOfWaste: analyticsData.costOfWaste,
         totalStockValue: analyticsData.totalStockValue,
         closingReserve: analyticsData.closingReserve,
         products: analyticsData.products,
@@ -375,8 +384,8 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 <div className="w-7 h-7 rounded-lg bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center">
                   <Sun className="w-3.5 h-3.5 text-orange-600" />
                 </div>
-                <span className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">
-                  {session.totalProductsPrepared} pcs
+                <span className="text-[10px] font-bold bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded">
+                  ৳{openingStockAmount.toLocaleString()}
                 </span>
               </div>
               <div className="mt-2 font-bold text-xs text-zinc-900 group-hover:text-orange-600 transition">
@@ -393,8 +402,8 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
                   <Moon className="w-3.5 h-3.5 text-amber-700" />
                 </div>
-                <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">
-                  {session.totalProductsSold} sold
+                <span className="text-[10px] font-bold bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded">
+                  ৳{closingLeftoverAmount.toLocaleString()}
                 </span>
               </div>
               <div className="mt-2 font-bold text-xs text-zinc-900 group-hover:text-orange-600 transition">
@@ -412,7 +421,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                   <Receipt className="w-3.5 h-3.5 text-red-600" />
                 </div>
                 <span className="text-[10px] font-bold bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
-                  ৳{session.totalExpenses}
+                  ৳{session.totalExpenses.toLocaleString()}
                 </span>
               </div>
               <div className="mt-2 font-bold text-xs text-zinc-900 group-hover:text-orange-600 transition">
@@ -430,7 +439,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                   <Wallet className="w-3.5 h-3.5 text-emerald-700" />
                 </div>
                 <span className="text-[10px] font-bold bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded">
-                  ৳{session.actualCashCounted}
+                  ৳{session.actualCashCounted.toLocaleString()}
                 </span>
               </div>
               <div className="mt-2 font-bold text-xs text-zinc-900 group-hover:text-orange-600 transition">

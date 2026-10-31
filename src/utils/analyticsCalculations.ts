@@ -23,6 +23,7 @@ export interface AggregatedAnalyticsResult {
   totalPrepared: number;
   totalSold: number;
   totalWaste: number;
+  costOfWaste: number;
   totalStockValue: number;
   closingReserve: number;
   products: {
@@ -90,6 +91,7 @@ export function calculateAggregatedAnalytics({
   let totalPrepared = 0;
   let totalSold = 0;
   let totalWaste = 0;
+  let costOfWaste = 0;
   let totalStockValue = 0;
 
   const productMap: Record<string, { name: string; unitPrice: number; sold: number; wasted: number; revenue: number }> = {};
@@ -112,6 +114,7 @@ export function calculateAggregatedAnalytics({
       totalPay += dayPay;
       totalSold += day.items.reduce((sum, item) => sum + item.quantitySold, 0);
       totalWaste += day.items.reduce((sum, item) => sum + item.closingWasted, 0);
+      costOfWaste += day.items.reduce((sum, item) => sum + ((item.closingWasted || 0) * (item.unitPrice || 0)), 0);
 
       // Multi-day inventory prepared & stock value calculation:
       // Rollover inventory carried over between days is NOT double-counted.
@@ -171,6 +174,7 @@ export function calculateAggregatedAnalytics({
     totalPrepared = fallbackItems.reduce((sum, item) => sum + item.totalAvailable, 0);
     totalSold = fallbackItems.reduce((sum, item) => sum + item.quantitySold, 0);
     totalWaste = fallbackItems.reduce((sum, item) => sum + item.closingWasted, 0);
+    costOfWaste = fallbackItems.reduce((sum, item) => sum + ((item.closingWasted || 0) * (item.unitPrice || 0)), 0);
     totalStockValue = fallbackItems.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
 
     fallbackItems.forEach((item) => {
@@ -295,6 +299,7 @@ export function calculateAggregatedAnalytics({
     totalPrepared,
     totalSold,
     totalWaste,
+    costOfWaste,
     totalStockValue,
     closingReserve,
     products,

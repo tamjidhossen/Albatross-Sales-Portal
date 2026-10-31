@@ -68,6 +68,7 @@ describe('Analytics Aggregation Engine', () => {
     assert.strictEqual(result.totalPrepared, 40, 'Total prepared must be exactly 40, NOT 280');
     assert.strictEqual(result.totalSold, 25, 'Total sold must be exactly 25, NOT 175');
     assert.strictEqual(result.totalWaste, 2, 'Total waste must be exactly 2, NOT 14');
+    assert.strictEqual(result.costOfWaste, 240, 'Cost of waste must be 2 * 120 = 240');
     assert.strictEqual(result.grossSales, 3000, 'Gross sales must be exactly 3000, NOT 21000');
     assert.strictEqual(result.discounts, 100, 'Discounts must be 100');
     assert.strictEqual(result.netSales, 2900, 'Net sales must be 2900');
@@ -295,6 +296,7 @@ describe('Analytics Aggregation Engine', () => {
     assert.strictEqual(result.totalPrepared, 60, 'Total unique burgers prepared must be 60, NOT 70');
     assert.strictEqual(result.totalStockValue, 60 * 120, 'Total stock value must be 7,200 (60 * 120), NOT 8,400');
     assert.strictEqual(result.totalWaste, 1);
+    assert.strictEqual(result.costOfWaste, 120, 'Cost of waste must be 1 * 120 = 120');
   });
 
   it('correctly sets isSalesLocked false when shift is open/unlocked and true when locked', () => {

@@ -22,6 +22,7 @@ export interface AnalyticsReportData {
   totalPrepared: number;
   totalSold: number;
   totalWaste: number; // Count of wasted items
+  costOfWaste?: number; // Total cost / value of wasted items
   totalStockValue?: number; // Total Stock Value loaded for the period
   // Closing Cash Reserve for the latest date in range
   closingReserve: number;
@@ -218,10 +219,11 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   rowY += 22;
   drawMetricPair('Total Items Sold:', `${data.totalSold} pcs`, 'Total Items Wasted:', `${data.totalWaste} pcs`, rowY, '#059669', '#DC2626');
 
-  // Row 4: Closing Cash Reserve (for last day)
+  // Row 4: Closing Cash Reserve (for last day) & Cost of Item Wasted
   rowY += 22;
   const reserveLabel = data.days > 1 ? `Closing Cash Reserve (${data.endDate}):` : 'Cash Reserve:';
-  drawMetricPair(reserveLabel, `৳${data.closingReserve.toLocaleString()}`, '', '', rowY, '#EA4300');
+  const wasteCost = data.costOfWaste ?? data.products.reduce((sum, p) => sum + ((p.wasted || 0) * (p.unitPrice || 0)), 0);
+  drawMetricPair(reserveLabel, `৳${data.closingReserve.toLocaleString()}`, 'Cost of Item Wasted:', `৳${wasteCost.toLocaleString()}`, rowY, '#EA4300', '#DC2626');
 
   // Row 5: Average Daily Sales & Profit (Kept ONLY for multi-day range)
   if (data.days > 1) {
