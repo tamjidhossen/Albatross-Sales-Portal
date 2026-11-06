@@ -11,7 +11,8 @@ import {
   Coins,
   Download,
   Check,
-  ChevronDown
+  ChevronDown,
+  Edit3
 } from 'lucide-react';
 import { downloadDailySummaryImage } from '../../utils/generateSummaryImage';
 import { LockConfirmationModal } from './LockConfirmationModal';
@@ -66,23 +67,18 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   const [confirmDeletePayoutId, setConfirmDeletePayoutId] = useState<string | null>(null);
 
   // Khuchra cash state
-  const khuchraVal = session.khuchraTakenFromReserve || session.openingCash || 0;
+  const khuchraVal = session.khuchraTakenFromReserve ?? session.openingCash ?? 0;
   const [khuchraInput, setKhuchraInput] = useState(khuchraVal === 0 ? '' : khuchraVal.toString());
 
-  // Closing drawer cash state (defaults to 0 for uncounted shifts)
-  const initialDrawerVal = (session.actualCashCounted ?? 0).toString();
-  const [closingDrawerInput, setClosingDrawerInput] = useState(initialDrawerVal);
-  const [isSavedDrawer, setIsSavedDrawer] = useState(false);
+  // Closing drawer cash modal state
+  const [isDrawerModalOpen, setIsDrawerModalOpen] = useState(false);
+  const [drawerModalInput, setDrawerModalInput] = useState('');
+  const [justSaved, setJustSaved] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
 
-  // Sync inputs if selected date or underlying session data updates
   useEffect(() => {
-    setClosingDrawerInput((session.actualCashCounted ?? 0).toString());
-  }, [session.sessionDate, session.actualCashCounted]);
-
-  useEffect(() => {
-    const kVal = session.khuchraTakenFromReserve || session.openingCash || 0;
+    const kVal = session.khuchraTakenFromReserve ?? session.openingCash ?? 0;
     setKhuchraInput(kVal === 0 ? '' : kVal.toString());
   }, [session.sessionDate, session.khuchraTakenFromReserve, session.openingCash]);
 
@@ -93,10 +89,28 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
   const isMatch = currentDiff === 0 && !isNegativeExpected;
   const isShortage = currentDiff < 0;
   const isEditable = !session.isLocked || isSuperAdmin;
+  const hasSavedDrawer = (session.transferredToReserve || 0) > 0 || session.isLocked;
 
   const handleKhuchraBlur = () => {
-    const val = parseFloat(khuchraInput) || 0;
+    const parsed = parseFloat(khuchraInput);
+    const val = isNaN(parsed) ? 0 : Math.max(0, parsed);
     onUpdateKhuchra(val);
+  };
+
+  const handleOpenDrawerModal = () => {
+    if (!isEditable) return;
+    setDrawerModalInput((session.actualCashCounted ?? 0).toString());
+    setIsDrawerModalOpen(true);
+  };
+
+  const handleConfirmDrawerModal = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const parsed = parseFloat(drawerModalInput);
+    const val = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    onSaveDrawerCash(val);
+    setIsDrawerModalOpen(false);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2500);
   };
 
   const handleAddPayoutSubmit = (e: React.FormEvent) => {
@@ -115,14 +129,6 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
     setPayoutNotes('');
     if (recipient === 'Other Person') setCustomRecipient('');
-  };
-
-  const handleSaveDrawerSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(closingDrawerInput) || 0;
-    onSaveDrawerCash(val);
-    setIsSavedDrawer(true);
-    setTimeout(() => setIsSavedDrawer(false), 2000);
   };
 
   const handleDownloadSlip = () => {
@@ -409,52 +415,52 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
           </div>
         )}
 
-        {/* Closing Drawer Cash Input & Save Button */}
-        <form onSubmit={handleSaveDrawerSubmit} className="bg-zinc-50 rounded-lg p-2.5 border border-zinc-200 space-y-2">
-          <label className="block text-xs font-bold text-zinc-800">
-            Closing Drawer Cash (Counted Tonight):
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400">৳</span>
-            <input
-              type="number"
-              min="0"
-              disabled={!isEditable}
-              value={closingDrawerInput}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (/^0[0-9]+/.test(val)) {
-                  setClosingDrawerInput(val.replace(/^0+/, ''));
-                } else {
-                  setClosingDrawerInput(val);
-                }
-              }}
-              onBlur={() => {
-                if (closingDrawerInput === '') {
-                  setClosingDrawerInput('0');
-                }
-              }}
-              placeholder="0"
-              className="w-full h-9 rounded-lg bg-white border border-zinc-300 text-center font-extrabold text-base text-zinc-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
-            />
+        {/* Closing Drawer Cash Box / Tap to Count */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-zinc-800">
+              Closing Drawer Cash (Counted Tonight):
+            </label>
+            {(hasSavedDrawer || justSaved) && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <Check className="w-3 h-3 text-emerald-600" />
+                <span>Saved</span>
+              </span>
+            )}
           </div>
 
-          {isEditable && (
-            <button
-              type="submit"
-              className="w-full bg-zinc-900 hover:bg-orange-600 text-white font-bold py-2 rounded-lg text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-1.5"
-            >
-              {isSavedDrawer ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Drawer Cash Saved to Reserve!</span>
-                </>
-              ) : (
-                <span>Save Drawer Cash (Adds to Reserve)</span>
-              )}
-            </button>
-          )}
-        </form>
+          <button
+            type="button"
+            disabled={!isEditable}
+            onClick={handleOpenDrawerModal}
+            className={`w-full group rounded-xl p-3 border text-left transition relative flex items-center justify-between ${
+              isEditable
+                ? 'bg-zinc-50 hover:bg-orange-50/30 border-zinc-300 hover:border-orange-400 cursor-pointer shadow-2xs active:scale-[0.99]'
+                : 'bg-zinc-100/70 border-zinc-200 cursor-not-allowed opacity-90'
+            } ${justSaved ? 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/20' : ''}`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
+                justSaved 
+                  ? 'bg-emerald-100 text-emerald-700' 
+                  : 'bg-white border border-zinc-200 text-zinc-700 group-hover:text-orange-600 group-hover:border-orange-300'
+              }`}>
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div className="text-base font-black text-zinc-900 tracking-tight flex items-baseline gap-0.5">
+                <span className="text-xs font-bold text-zinc-400">৳</span>
+                <span>{(session.actualCashCounted ?? 0).toLocaleString()}</span>
+              </div>
+            </div>
+
+            {isEditable && (
+              <div className="flex items-center gap-1 text-zinc-500 group-hover:text-orange-600 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-white border border-zinc-200 group-hover:border-orange-300 shadow-2xs transition">
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Enter</span>
+              </div>
+            )}
+          </button>
+        </div>
 
         {/* Discrepancy Alert Callout (Shortage / Surplus Warning Kept) */}
         <div className={`rounded-lg p-2.5 flex items-center justify-between text-xs font-semibold border ${
@@ -488,7 +494,7 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
 
         {/* Reserve Settlement Summary */}
         {(() => {
-          const isDrawerSaved = (session.transferredToReserve || 0) > 0;
+          const isDrawerSaved = (session.transferredToReserve || 0) > 0 || session.isLocked || justSaved;
           const safeCash = Math.max(0, session.openingSavedCash - khuchraVal);
 
           return (
@@ -504,9 +510,9 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
                 <span>Drawer Cash Deposited Tonight:</span>
                 <span className={`font-bold ${isDrawerSaved ? 'text-emerald-700' : 'text-zinc-500'}`}>
                   {isDrawerSaved 
-                    ? `+৳${session.actualCashCounted.toLocaleString()}` 
+                    ? `+৳${(session.actualCashCounted ?? 0).toLocaleString()}` 
                     : session.actualCashCounted > 0 
-                    ? `৳${session.actualCashCounted.toLocaleString()} (Pending Save)` 
+                    ? `+৳${session.actualCashCounted.toLocaleString()}` 
                     : 'Pending Drawer Count'}
                 </span>
               </div>
@@ -582,6 +588,78 @@ export const CashSettlementSection: React.FC<CashSettlementSectionProps> = ({
         onConfirm={onToggleLock}
         onClose={() => setIsLockModalOpen(false)}
       />
+
+      {/* Drawer Cash Input Modal */}
+      {isDrawerModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setIsDrawerModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl p-5 w-full max-w-xs sm:max-w-sm border border-zinc-200 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-sm text-zinc-900">Closing Drawer Cash</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDrawerModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-lg hover:bg-zinc-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDrawerModal} className="space-y-4">
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl font-bold text-zinc-400 select-none">
+                  ৳
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  autoFocus
+                  value={drawerModalInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^0[0-9]+/.test(val)) {
+                      setDrawerModalInput(val.replace(/^0+/, ''));
+                    } else {
+                      setDrawerModalInput(val);
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0"
+                  className="w-full h-13 pl-9 pr-3 rounded-xl bg-zinc-50 border-2 border-zinc-300 focus:border-orange-500 focus:bg-white text-center font-black text-2xl text-zinc-900 focus:outline-none transition shadow-inner"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-98 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>OK</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

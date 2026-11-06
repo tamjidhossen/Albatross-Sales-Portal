@@ -21,8 +21,9 @@ export interface AnalyticsReportData {
   // Operations & Stock
   totalPrepared: number;
   totalSold: number;
-  totalWaste: number; // Count of wasted items
+  totalWaste?: number; // Count of wasted items
   costOfWaste?: number; // Total cost / value of wasted items
+  totalCashShortage?: number; // Total Cash Shortage
   totalStockValue?: number; // Total Stock Value loaded for the period
   // Closing Cash Reserve for the latest date in range
   closingReserve: number;
@@ -60,7 +61,7 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   const payoutRowHeight = 22;
 
   // Dynamic height calculation
-  const metricsBoxHeight = data.days > 1 ? 144 : 118;
+  const metricsBoxHeight = data.days > 1 ? 154 : 132;
   const prodTableHeight = 44 + Math.max(1, data.products.length) * productRowHeight + 26;
   const expTableHeight = 44 + Math.max(1, data.expenseCategories.length) * expenseRowHeight + 24;
   const payTableHeight = 44 + Math.max(1, data.payouts.length) * payoutRowHeight + 24;
@@ -146,11 +147,11 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   drawSummaryCard(xMargin + cardWidth + cardSpacing, 'BAZAAR EXP', `৳${data.totalExp.toLocaleString()}`, 'Supplies', '#F8FAFC', '#E2E8F0', '#DC2626');
   drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 2, 'PAYOUTS', `৳${data.totalPay.toLocaleString()}`, 'Staff & owner', '#F8FAFC', '#E2E8F0', '#DC2626');
   if (data.isSalesLocked === false && (!data.lockedDaysCount || data.days === 1)) {
-    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', 'Pending Lock', 'Calculates after lock', '#FFFBEB', '#FDE68A', '#D97706');
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'GROSS PROFIT', 'Pending Lock', 'Calculates after lock', '#FFFBEB', '#FDE68A', '#D97706');
   } else if (data.isSalesLocked === false && data.lockedDaysCount && data.days > 1) {
-    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${(data.lockedNetProfit || 0).toLocaleString()}`, 'From locked days', '#FFF7ED', '#FDBA74', '#EA4300');
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'GROSS PROFIT', `৳${(data.lockedNetProfit || 0).toLocaleString()}`, 'From locked days', '#FFF7ED', '#FDBA74', '#EA4300');
   } else {
-    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'NET PROFIT', `৳${data.netProfit.toLocaleString()}`, `Margin: ${data.profitMargin}%`, '#FFF7ED', '#FDBA74', '#EA4300');
+    drawSummaryCard(xMargin + (cardWidth + cardSpacing) * 3, 'GROSS PROFIT', `৳${data.netProfit.toLocaleString()}`, `Margin: ${data.profitMargin}% (Payouts incl.)`, '#FFF7ED', '#FDBA74', '#EA4300');
   }
 
   y += cardHeight + 18;
@@ -215,17 +216,37 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
   rowY += 22;
   drawMetricPair('Total Stock Value:', `৳${(data.totalStockValue || 0).toLocaleString()}`, 'Total Items Prepared:', `${data.totalPrepared} pcs`, rowY, '#EA4300', '#0F172A');
 
-  // Row 3: Items Sold & Items Wasted
+  // Row 3: Items Sold & Cost of Item Wasted (wasted pieces count removed, amount kept)
   rowY += 22;
-  drawMetricPair('Total Items Sold:', `${data.totalSold} pcs`, 'Total Items Wasted:', `${data.totalWaste} pcs`, rowY, '#059669', '#DC2626');
+  const wasteCost = data.costOfWaste ?? data.products.reduce((sum, p) => sum + ((p.wasted || 0) * (p.unitPrice || 0)), 0);
+  drawMetricPair('Total Items Sold:', `${data.totalSold} pcs`, 'Cost of Item Wasted:', `৳${wasteCost.toLocaleString()}`, rowY, '#059669', '#DC2626');
 
-  // Row 4: Closing Cash Reserve (for last day) & Cost of Item Wasted
+  // Row 4: Total Cash Shortage & Gross Profit (payouts included) with margin %
+  rowY += 22;
+  const isShortagePending = data.isSalesLocked === false && (!data.lockedDaysCount || data.days === 1);
+  const shortageVal = (data.totalCashShortage || 0);
+  const shortageStr = isShortagePending ? 'Pending Lock' : shortageVal > 0 ? `−৳${shortageVal.toLocaleString()}` : '৳0';
+  const shortageColor = isShortagePending ? '#D97706' : shortageVal > 0 ? '#DC2626' : '#0F172A';
+
+  const isProfitPending = data.isSalesLocked === false && (!data.lockedDaysCount || data.days === 1);
+  let profitStr = 'Pending Lock';
+  if (!isProfitPending) {
+    if (data.isSalesLocked === false && data.lockedDaysCount && data.days > 1) {
+      const lockedMargin = (data.lockedNetSales && data.lockedNetSales > 0) ? Math.round(((data.lockedNetProfit || 0) / data.lockedNetSales) * 1000) / 10 : 0;
+      profitStr = `৳${(data.lockedNetProfit || 0).toLocaleString()} (${lockedMargin}%)`;
+    } else {
+      profitStr = `৳${data.netProfit.toLocaleString()} (${data.profitMargin}%)`;
+    }
+  }
+  const profitColor = isProfitPending ? '#D97706' : '#EA4300';
+  drawMetricPair('Total Cash Shortage:', shortageStr, 'Gross Profit (Payouts Incl.):', profitStr, rowY, shortageColor, profitColor);
+
+  // Row 5: Closing Cash Reserve (for last day)
   rowY += 22;
   const reserveLabel = data.days > 1 ? `Closing Cash Reserve (${data.endDate}):` : 'Cash Reserve:';
-  const wasteCost = data.costOfWaste ?? data.products.reduce((sum, p) => sum + ((p.wasted || 0) * (p.unitPrice || 0)), 0);
-  drawMetricPair(reserveLabel, `৳${data.closingReserve.toLocaleString()}`, 'Cost of Item Wasted:', `৳${wasteCost.toLocaleString()}`, rowY, '#EA4300', '#DC2626');
+  drawMetricPair(reserveLabel, `৳${data.closingReserve.toLocaleString()}`, '', '', rowY, '#EA4300');
 
-  // Row 5: Average Daily Sales & Profit (Kept ONLY for multi-day range)
+  // Row 6: Average Daily Sales & Profit (Kept ONLY for multi-day range)
   if (data.days > 1) {
     rowY += 22;
     if (data.isSalesLocked === false) {
@@ -508,7 +529,7 @@ export function downloadAnalyticsReportImage(data: AnalyticsReportData) {
     // Result Line
     ctx.fillStyle = '#EA4300';
     ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-    ctx.fillText(`= NET OPERATING PROFIT: ৳${data.netProfit.toLocaleString()} (Margin: ${data.profitMargin}%)`, xMargin + 12, y + 56);
+    ctx.fillText(`= GROSS PROFIT (PAYOUTS INCLUDED): ৳${data.netProfit.toLocaleString()} (Margin: ${data.profitMargin}%)`, xMargin + 12, y + 56);
   }
 
   y += 68 + 24;

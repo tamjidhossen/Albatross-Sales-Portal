@@ -25,7 +25,7 @@ export const mapSessionFromDB = (row: any): DailySession => {
   const transferred = Number(row.transferred_to_reserve) || 0;
   const rawActual = Number(row.actual_cash_counted) || 0;
   const openingCash = Number(row.opening_cash) || 0;
-  const khuchra = Number(row.khuchra_taken_from_reserve || row.opening_cash) || 0;
+  const khuchra = Number(row.khuchra_taken_from_reserve ?? row.opening_cash) || 0;
   const openingSaved = Number(row.opening_saved_cash) || 0;
   const rawClosingSaved = Number(row.closing_saved_cash) || 0;
 
@@ -462,7 +462,7 @@ export const cascadeInventoryCarryover = (
     const expectedOpeningReserve = curDay.session.closingSavedCash;
     if (expectedOpeningReserve > 0 && nextSession.openingSavedCash !== expectedOpeningReserve && curDay.session.status === 'closed') {
       nextDayModified = true;
-      const khuchra = nextSession.khuchraTakenFromReserve || nextSession.openingCash;
+      const khuchra = nextSession.khuchraTakenFromReserve ?? nextSession.openingCash ?? 0;
       const netCashGenerated = nextSession.actualCashCounted - khuchra;
       nextSession = {
         ...nextSession,
@@ -476,7 +476,7 @@ export const cascadeInventoryCarryover = (
       const netRevenue = Math.max(0, grossRevenue - nextSession.estimatedDiscounts);
       const totalExp = nextDay.expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalPay = nextDay.payouts.reduce((sum, p) => sum + p.amount, 0);
-      const khuchra = nextSession.khuchraTakenFromReserve || nextSession.openingCash || 0;
+      const khuchra = nextSession.khuchraTakenFromReserve ?? nextSession.openingCash ?? 0;
       const expectedCash = Math.max(0, khuchra + netRevenue - totalExp - totalPay);
 
       const finalNextSession: DailySession = {
@@ -610,7 +610,7 @@ export const fetchAllDaysData = async (): Promise<Record<string, DayData>> => {
           const totalSold = dayData.items.reduce((s, i) => s + i.quantitySold, 0);
           const grossRev = dayData.items.reduce((s, i) => s + i.estimatedRevenue, 0);
           const netRev = Math.max(0, grossRev - (dayData.session.estimatedDiscounts || 0));
-          const khuchra = dayData.session.khuchraTakenFromReserve || dayData.session.openingCash || 0;
+          const khuchra = dayData.session.khuchraTakenFromReserve ?? dayData.session.openingCash ?? 0;
           const totalExp = dayData.expenses.reduce((s, e) => s + e.amount, 0);
           const totalPay = dayData.payouts.reduce((s, p) => s + p.amount, 0);
           const expCash = Math.max(0, khuchra + netRev - totalExp - totalPay);
@@ -892,5 +892,28 @@ export const updateSessionLock = async (sessionDate: string, isLocked: boolean):
       .eq('session_date', sessionDate);
   } catch (err) {
     console.error('Failed to update session lock:', err);
+  }
+};
+
+/**
+ * Completely undo/delete a day session and all its associated data (superadmin only)
+ */
+export const deleteDayDataFromDB = async (sessionDate: string): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return true;
+  try {
+    await Promise.all([
+      supabase.from('daily_expenses').delete().eq('session_date', sessionDate),
+      supabase.from('daily_payouts').delete().eq('session_date', sessionDate),
+      supabase.from('daily_inventory').delete().eq('session_date', sessionDate),
+    ]);
+    const { error } = await supabase.from('daily_sessions').delete().eq('session_date', sessionDate);
+    if (error) {
+      console.warn('Failed to delete daily_session:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to delete day data:', err);
+    return false;
   }
 };

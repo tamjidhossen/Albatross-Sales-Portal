@@ -41,6 +41,7 @@ import {
   persistPayout, 
   deletePayoutFromDB, 
   updateSessionLock, 
+  deleteDayDataFromDB,
   insertAuditLog,
   cascadeInventoryCarryover 
 } from '../../services/dailyOperationsService';
@@ -69,7 +70,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'opening' | 'closing' | 'expenses' | 'cash' | 'audit'>(() => {
     try {
       const saved = sessionStorage.getItem('albatross_active_tab');
-      if (saved && ['overview', 'opening', 'closing', 'expenses', 'cash', 'audit'].includes(saved)) {
+      if (saved && ['overview', 'opening', 'closing', 'expenses', 'cash'].includes(saved)) {
         return saved as any;
       }
     } catch {}
@@ -384,7 +385,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
       const netRevenue = Math.max(0, grossRevenue - discounts);
       const totalExp = nextExpenses.reduce((sum, e) => sum + e.amount, 0);
       const totalPay = nextPayouts.reduce((sum, p) => sum + p.amount, 0);
-      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash || 0;
+      const khuchra = cur.session.khuchraTakenFromReserve ?? cur.session.openingCash ?? 0;
       const expected = khuchra + netRevenue - totalExp - totalPay;
       const diff = actualCash - expected;
 
@@ -551,7 +552,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             const netRev = Math.max(0, grossRev - day.session.estimatedDiscounts);
             const totalExp = day.expenses.reduce((s, e) => s + e.amount, 0);
             const totalPay = day.payouts.reduce((s, p) => s + p.amount, 0);
-            const khuchra = day.session.khuchraTakenFromReserve || day.session.openingCash || 0;
+            const khuchra = day.session.khuchraTakenFromReserve ?? day.session.openingCash ?? 0;
             const expCash = Math.max(0, khuchra + netRev - totalExp - totalPay);
             const updatedSession = {
               ...day.session,
@@ -717,7 +718,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     setAllDays((prevAll) => {
       const cur = prevAll[selectedDate];
       if (!cur) return prevAll;
-      const khuchra = cur.session.khuchraTakenFromReserve || cur.session.openingCash || 0;
+      const khuchra = cur.session.khuchraTakenFromReserve ?? cur.session.openingCash ?? 0;
       const safeCash = Math.max(0, cur.session.openingSavedCash - khuchra);
       const nextReserve = safeCash + countedDrawerCash;
       const expected = khuchra + cur.session.netEstimatedRevenue - cur.session.totalExpenses - cur.session.totalPayouts;
@@ -802,6 +803,34 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
     logAudit('session', dateToLock, 'LOCK', 'isLocked', 'unlocked', 'locked', 'Locked previous day shift via lock alert');
   };
 
+  const handleUndoDay = async (dateToUndo: string) => {
+    if (!isSuperAdmin) return;
+    await deleteDayDataFromDB(dateToUndo);
+
+    setAllDays((prevAll) => {
+      const nextMap = { ...prevAll };
+      delete nextMap[dateToUndo];
+      const { updatedDays, changedDays } = cascadeInventoryCarryover(nextMap);
+      if (changedDays.length > 0) {
+        changedDays.forEach((cd) => {
+          persistSession(cd.session);
+          persistInventoryItems(cd.items);
+        });
+      }
+      return updatedDays;
+    });
+
+    logAudit(
+      'session',
+      dateToUndo,
+      'DELETE',
+      'status',
+      'started',
+      null,
+      `[Super Admin] Undid day for ${dateToUndo} - deleted session, inventory, expenses, and payouts`
+    );
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans selection:bg-zinc-900 selection:text-white">
       
@@ -881,6 +910,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             onNavigateTab={(tab) => setActiveTab(tab)}
             onToggleLock={handleToggleLock}
             onStartShift={handleStartShift}
+            onUndoDay={handleUndoDay}
             isSuperAdmin={isSuperAdmin}
             allSessionsData={allDays}
           />
@@ -926,7 +956,7 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
           <MorningStockSection
             items={inventoryItems}
             sessionDate={selectedDate}
-            khuchra={session.khuchraTakenFromReserve || session.openingCash}
+            khuchra={session.khuchraTakenFromReserve ?? session.openingCash ?? 0}
             onUpdateItem={handleUpdateMorningItem}
             onAddProduct={handleAddProduct}
             onDeleteItem={handleDeleteMorningItem}
@@ -974,37 +1004,6 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
             isSuperAdmin={isSuperAdmin}
             staffNames={staffNames}
           />
-        )}
-
-        {activeTab === 'audit' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
-              <span className="font-bold text-sm text-zinc-900">
-                Audit Trail (Change History)
-              </span>
-              <button
-                onClick={() => setActiveTab('overview')}
-                className="text-xs text-zinc-500 hover:text-zinc-900 font-medium"
-              >
-                Done
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {auditLogs.map((log) => (
-                <div key={log.id} className="bg-white rounded-xl p-3 border border-zinc-200 text-xs shadow-sm">
-                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">
-                    <span className="font-semibold text-zinc-700">{log.action} • {log.entityType}</span>
-                    <span>{log.createdAt}</span>
-                  </div>
-                  <div className="font-medium text-zinc-900">{log.reason || 'Record updated'}</div>
-                  <div className="text-[11px] text-zinc-500 mt-1">
-                    By: <strong className="text-zinc-800">{log.changedByName}</strong> ({log.changedByRole})
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
 
       </main>
@@ -1070,19 +1069,6 @@ const AdminLayoutInner: React.FC<AdminLayoutProps> = ({ onBackToLanding }) => {
         >
           <Wallet className="w-4 h-4" />
           <span className="text-[10px] mt-0.5">Cash</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('audit')}
-          className={`flex flex-col items-center py-1 px-2.5 rounded-lg transition ${
-            activeTab === 'audit' 
-              ? 'text-orange-600 font-bold bg-orange-50 border border-orange-200/60 shadow-2xs' 
-              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 border border-transparent'
-          }`}
-          title="Audit Trail"
-        >
-          <History className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">Audit</span>
         </button>
 
       </nav>

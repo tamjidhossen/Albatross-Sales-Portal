@@ -407,4 +407,112 @@ describe('Analytics Aggregation Engine', () => {
     });
     assert.strictEqual(multiDayMixedResult.isSalesLocked, false, 'If any operating day is unlocked, range isSalesLocked must be false');
   });
+
+  it('correctly calculates totalCashShortage across single-day and multi-day ranges', () => {
+    // Day 1: Expected 2800, actual 2600 -> shortage 200
+    const day1: DayData = {
+      session: {
+        sessionDate: '2026-10-22',
+        status: 'closed',
+        isLocked: true,
+        openingCash: 1000,
+        khuchraTakenFromReserve: 1000,
+        openingSavedCash: 20000,
+        totalProductsPrepared: 20,
+        totalProductsSold: 20,
+        totalProductsWasted: 0,
+        grossEstimatedRevenue: 2400,
+        estimatedDiscounts: 0,
+        netEstimatedRevenue: 2400,
+        totalExpenses: 600,
+        totalPayouts: 0,
+        expectedClosingCash: 2800,
+        actualCashCounted: 2600, // Short by 200
+        cashDifference: -200,
+        transferredToReserve: 2600,
+        closingCartCash: 2600,
+        closingSavedCash: 21600,
+      },
+      items: [
+        {
+          id: '1',
+          sessionDate: '2026-10-22',
+          productId: 'burger',
+          productName: 'Burger',
+          unitPrice: 120,
+          morningCarriedOver: 0,
+          morningNewPrepared: 20,
+          totalAvailable: 20,
+          closingCounted: 0,
+          closingUsableLeftover: 0,
+          closingWasted: 0,
+          quantitySold: 20,
+          estimatedRevenue: 2400,
+        },
+      ],
+      expenses: [{ id: 'e1', sessionDate: '2026-10-22', category: 'Raw Materials', itemName: 'Meat', amount: 600, paidByName: 'Tamjid' }],
+      payouts: [],
+    };
+
+    // Day 2: Expected 2000, actual 1950 -> shortage 50
+    const day2: DayData = {
+      session: {
+        sessionDate: '2026-10-23',
+        status: 'closed',
+        isLocked: true,
+        openingCash: 1000,
+        khuchraTakenFromReserve: 1000,
+        openingSavedCash: 21600,
+        totalProductsPrepared: 10,
+        totalProductsSold: 10,
+        totalProductsWasted: 0,
+        grossEstimatedRevenue: 1200,
+        estimatedDiscounts: 0,
+        netEstimatedRevenue: 1200,
+        totalExpenses: 200,
+        totalPayouts: 0,
+        expectedClosingCash: 2000,
+        actualCashCounted: 1950, // Short by 50
+        cashDifference: -50,
+        transferredToReserve: 1950,
+        closingCartCash: 1950,
+        closingSavedCash: 22550,
+      },
+      items: [
+        {
+          id: '2',
+          sessionDate: '2026-10-23',
+          productId: 'burger',
+          productName: 'Burger',
+          unitPrice: 120,
+          morningCarriedOver: 0,
+          morningNewPrepared: 10,
+          totalAvailable: 10,
+          closingCounted: 0,
+          closingUsableLeftover: 0,
+          closingWasted: 0,
+          quantitySold: 10,
+          estimatedRevenue: 1200,
+        },
+      ],
+      expenses: [{ id: 'e2', sessionDate: '2026-10-23', category: 'Raw Materials', itemName: 'Sauce', amount: 200, paidByName: 'Tamjid' }],
+      payouts: [],
+    };
+
+    // Single-day test
+    const singleResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-22',
+      calcEndDate: '2026-10-22',
+      allSessionsData: { '2026-10-22': day1 },
+    });
+    assert.strictEqual(singleResult.totalCashShortage, 200, 'Single day shortage must be exactly 200');
+
+    // Multi-day test: 200 + 50 = 250
+    const multiResult = calculateAggregatedAnalytics({
+      calcStartDate: '2026-10-22',
+      calcEndDate: '2026-10-23',
+      allSessionsData: { '2026-10-22': day1, '2026-10-23': day2 },
+    });
+    assert.strictEqual(multiResult.totalCashShortage, 250, 'Multi-day shortage must sum up to 250 (200 + 50)');
+  });
 });

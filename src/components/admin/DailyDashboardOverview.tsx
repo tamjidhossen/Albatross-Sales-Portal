@@ -16,10 +16,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Store,
-  Plus
+  Plus,
+  RotateCcw
 } from 'lucide-react';
 import { downloadAnalyticsReportImage } from '../../utils/generateAnalyticsImage';
 import { LockConfirmationModal } from './LockConfirmationModal';
+import { UndoDayConfirmationModal } from './UndoDayConfirmationModal';
 import { getTodayDateString } from '../../services/dailyOperationsService';
 import { calculateAggregatedAnalytics } from '../../utils/analyticsCalculations';
 
@@ -33,6 +35,7 @@ interface DailyDashboardOverviewProps {
   onNavigateTab: (tab: 'opening' | 'closing' | 'expenses' | 'cash') => void;
   onToggleLock?: () => void;
   onStartShift?: (openingCash: number) => void;
+  onUndoDay?: (date: string) => Promise<void> | void;
   isSuperAdmin: boolean;
   allSessionsData: Record<string, DayData>;
 }
@@ -47,6 +50,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
   onNavigateTab,
   onToggleLock,
   onStartShift,
+  onUndoDay,
   isSuperAdmin,
   allSessionsData,
 }) => {
@@ -56,6 +60,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
   const [endDate, setEndDate] = useState(selectedDate);
   const [isDownloadingAnalytics, setIsDownloadingAnalytics] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+  const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState('1000');
 
@@ -177,6 +182,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         totalSold: analyticsData.totalSold,
         totalWaste: analyticsData.totalWaste,
         costOfWaste: analyticsData.costOfWaste,
+        totalCashShortage: analyticsData.totalCashShortage,
         totalStockValue: analyticsData.totalStockValue,
         closingReserve: analyticsData.closingReserve,
         products: analyticsData.products,
@@ -188,7 +194,7 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
     }
   };
 
-  const khuchra = session?.khuchraTakenFromReserve || session?.openingCash || 0;
+  const khuchra = session?.khuchraTakenFromReserve ?? session?.openingCash ?? 0;
 
   return (
     <div className="space-y-3 font-sans">
@@ -231,6 +237,17 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
                 className="text-[10px] px-2 py-0.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold transition"
               >
                 {session?.isLocked ? 'Unlock' : 'Lock'}
+              </button>
+            )}
+
+            {isOperated && isSuperAdmin && onUndoDay && (
+              <button
+                onClick={() => setIsUndoModalOpen(true)}
+                className="text-[10px] px-2 py-0.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-semibold transition flex items-center gap-1"
+                title="Undo Day (Super Admin Danger Zone)"
+              >
+                <RotateCcw className="w-3 h-3 text-red-600" />
+                <span>Undo Day</span>
               </button>
             )}
           </div>
@@ -610,6 +627,16 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
         />
       )}
 
+      {/* Undo Day Confirmation Modal */}
+      {session && onUndoDay && (
+        <UndoDayConfirmationModal
+          isOpen={isUndoModalOpen}
+          sessionDate={selectedDate}
+          onConfirm={() => onUndoDay(selectedDate)}
+          onClose={() => setIsUndoModalOpen(false)}
+        />
+      )}
+
       {/* Start Shift Modal */}
       {isStartModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -670,7 +697,8 @@ export const DailyDashboardOverview: React.FC<DailyDashboardOverviewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const val = parseFloat(openingCashInput) || 1000;
+                  const parsed = parseFloat(openingCashInput);
+                  const val = isNaN(parsed) ? 1000 : Math.max(0, parsed);
                   if (onStartShift) {
                     onStartShift(val);
                   }

@@ -17,7 +17,7 @@ export const LockConfirmationModal: React.FC<LockConfirmationModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const khuchra = session.khuchraTakenFromReserve || session.openingCash || 0;
+  const khuchra = session.khuchraTakenFromReserve ?? session.openingCash ?? 0;
   const expectedClosing = khuchra + session.netEstimatedRevenue - session.totalExpenses - session.totalPayouts;
   const currentDiff = session.actualCashCounted - expectedClosing;
   const isMatch = currentDiff === 0;

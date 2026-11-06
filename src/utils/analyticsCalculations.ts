@@ -24,6 +24,7 @@ export interface AggregatedAnalyticsResult {
   totalSold: number;
   totalWaste: number;
   costOfWaste: number;
+  totalCashShortage: number;
   totalStockValue: number;
   closingReserve: number;
   products: {
@@ -92,6 +93,7 @@ export function calculateAggregatedAnalytics({
   let totalSold = 0;
   let totalWaste = 0;
   let costOfWaste = 0;
+  let totalCashShortage = 0;
   let totalStockValue = 0;
 
   const productMap: Record<string, { name: string; unitPrice: number; sold: number; wasted: number; revenue: number }> = {};
@@ -115,6 +117,16 @@ export function calculateAggregatedAnalytics({
       totalSold += day.items.reduce((sum, item) => sum + item.quantitySold, 0);
       totalWaste += day.items.reduce((sum, item) => sum + item.closingWasted, 0);
       costOfWaste += day.items.reduce((sum, item) => sum + ((item.closingWasted || 0) * (item.unitPrice || 0)), 0);
+
+      // Track cash shortage for closed/counted shifts
+      if (day.session.isLocked || (day.session.actualCashCounted || 0) > 0) {
+        const dKhuchra = day.session.khuchraTakenFromReserve ?? day.session.openingCash ?? 0;
+        const dExpected = Math.max(0, dKhuchra + Math.max(0, dayGross - dayDiscounts) - dayExp - dayPay);
+        const dDiff = (day.session.actualCashCounted || 0) - dExpected;
+        if (dDiff < 0) {
+          totalCashShortage += Math.abs(dDiff);
+        }
+      }
 
       // Multi-day inventory prepared & stock value calculation:
       // Rollover inventory carried over between days is NOT double-counted.
@@ -176,6 +188,15 @@ export function calculateAggregatedAnalytics({
     totalWaste = fallbackItems.reduce((sum, item) => sum + item.closingWasted, 0);
     costOfWaste = fallbackItems.reduce((sum, item) => sum + ((item.closingWasted || 0) * (item.unitPrice || 0)), 0);
     totalStockValue = fallbackItems.reduce((sum, item) => sum + (item.totalAvailable * item.unitPrice), 0);
+
+    if (fallbackSession.isLocked || (fallbackSession.actualCashCounted || 0) > 0) {
+      const fKhuchra = fallbackSession.khuchraTakenFromReserve ?? fallbackSession.openingCash ?? 0;
+      const fExpected = Math.max(0, fKhuchra + netSales - totalExp - totalPay);
+      const fDiff = (fallbackSession.actualCashCounted || 0) - fExpected;
+      if (fDiff < 0) {
+        totalCashShortage = Math.abs(fDiff);
+      }
+    }
 
     fallbackItems.forEach((item) => {
       productMap[item.productId] = {
@@ -262,7 +283,7 @@ export function calculateAggregatedAnalytics({
   if (sortedRange.length > 0) {
     const latestDay = sortedRange[sortedRange.length - 1];
     const isSaved = (latestDay.session.transferredToReserve || 0) > 0;
-    const khuchra = latestDay.session.khuchraTakenFromReserve || latestDay.session.openingCash || 0;
+    const khuchra = latestDay.session.khuchraTakenFromReserve ?? latestDay.session.openingCash ?? 0;
     const safeCash = Math.max(0, latestDay.session.openingSavedCash - khuchra);
     closingReserve = isSaved ? latestDay.session.closingSavedCash : (safeCash + khuchra);
   }
@@ -300,6 +321,7 @@ export function calculateAggregatedAnalytics({
     totalSold,
     totalWaste,
     costOfWaste,
+    totalCashShortage,
     totalStockValue,
     closingReserve,
     products,

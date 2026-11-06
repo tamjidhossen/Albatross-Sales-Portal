@@ -645,7 +645,7 @@ export function downloadCashSettlementSlip({
   const width = 680;
   const payoutRows = payouts.length;
   const payoutSectionHeight = payoutRows > 0 ? 40 + (payoutRows * 24) + 10 : 0;
-  const totalHeight = 110 + 290 + payoutSectionHeight + 90 + 50;
+  const totalHeight = 110 + 315 + payoutSectionHeight + 90 + 50;
 
   const { canvas, ctx } = setupCanvas(width, totalHeight);
   if (!ctx) return;
@@ -661,14 +661,14 @@ export function downloadCashSettlementSlip({
 
   let y = 120;
   const contentWidth = width - 48;
-  const khuchra = session.khuchraTakenFromReserve || session.openingCash || 0;
+  const khuchra = session.khuchraTakenFromReserve ?? session.openingCash ?? 0;
 
   // CASH RECONCILIATION CARD
   ctx.fillStyle = '#F8FAFC';
   ctx.strokeStyle = '#E2E8F0';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(24, y, contentWidth, 275, 10);
+  ctx.roundRect(24, y, contentWidth, 300, 10);
   ctx.fill();
   ctx.stroke();
 
@@ -702,9 +702,16 @@ export function downloadCashSettlementSlip({
   drawRow('Expected Closing Drawer Cash:', `৳${expectedCash.toLocaleString()}`, y + 164, '#0F172A', true);
 
   const diff = session.actualCashCounted - expectedCash;
-  const diffLabel = diff === 0 ? 'Exact Match (৳0)' : diff < 0 ? `Shortage: −৳${Math.abs(diff)}` : `Surplus: +৳${diff}`;
-  const diffColor = diff === 0 ? '#059669' : diff < 0 ? '#DC2626' : '#D97706';
-  drawRow('Actual Counted Drawer Cash Tonight:', `৳${session.actualCashCounted.toLocaleString()} (${diffLabel})`, y + 188, diffColor, true);
+  drawRow('Actual Counted Drawer Cash Tonight:', `৳${session.actualCashCounted.toLocaleString()}`, y + 186, '#0F172A', true);
+
+  const isShortage = diff < 0;
+  const shortageStr = isShortage 
+    ? `−৳${Math.abs(diff).toLocaleString()}` 
+    : diff === 0 
+    ? '৳0 (Balanced)' 
+    : `+৳${diff.toLocaleString()} (Surplus)`;
+  const shortageColor = isShortage ? '#DC2626' : diff === 0 ? '#059669' : '#D97706';
+  drawRow('Total Cash Shortage:', shortageStr, y + 208, shortageColor, true);
 
   // Reserve breakdown
   const isDrawerSaved = (session.transferredToReserve || 0) > 0;
@@ -713,15 +720,15 @@ export function downloadCashSettlementSlip({
 
   ctx.strokeStyle = '#CBD5E1';
   ctx.beginPath();
-  ctx.moveTo(38, y + 206);
-  ctx.lineTo(width - 38, y + 206);
+  ctx.moveTo(38, y + 228);
+  ctx.lineTo(width - 38, y + 228);
   ctx.stroke();
 
-  drawRow('Safe Cash in Reserve (Remaining):', `৳${safeCash.toLocaleString()}`, y + 226, '#64748B');
-  drawRow('Drawer Cash Saved to Reserve:', isDrawerSaved ? `+৳${session.actualCashCounted.toLocaleString()}` : 'Pending settlement', y + 246, isDrawerSaved ? '#059669' : '#94A3B8');
-  drawRow('Total Business Cash Reserve Now:', `৳${totalReserve.toLocaleString()}`, y + 266, '#EA4300', true);
+  drawRow('Safe Cash in Reserve (Remaining):', `৳${safeCash.toLocaleString()}`, y + 248, '#64748B');
+  drawRow('Drawer Cash Saved to Reserve:', isDrawerSaved ? `+৳${session.actualCashCounted.toLocaleString()}` : 'Pending settlement', y + 270, isDrawerSaved ? '#059669' : '#94A3B8');
+  drawRow('Total Business Cash Reserve Now:', `৳${totalReserve.toLocaleString()}`, y + 292, '#EA4300', true);
 
-  y += 295;
+  y += 320;
 
   // PAYOUTS BREAKDOWN TABLE (if any payouts exist)
   if (payouts.length > 0) {
